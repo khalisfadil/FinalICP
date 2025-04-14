@@ -1,0 +1,3 @@
+[submodule "extern/lgmath"]
+	path = extern/lgmath
+	url = https://github.com/khalisfadil/liegroupMath.git
