@@ -225,6 +225,10 @@ namespace finalicp{
                     unsigned int colCumSum = colIndexing.cumSumAt(c);
                     for (auto it = cols_[c].rows.begin(); it != cols_[c].rows.end(); ++it) {
                         unsigned int r = it->first;
+                        // Skip lower-triangular blocks for symmetric matrices
+                        if (isSymmetric() && r > c) {
+                            continue;
+                        }
                         unsigned int rowBlkSize = rowIndexing.blkSizeAt(r);
                         unsigned int rowCumSum = rowIndexing.cumSumAt(r);
 
@@ -235,10 +239,6 @@ namespace finalicp{
                                 double v_ij = it->second.data(i, j);
                                 if (std::fabs(v_ij) > 1e-10 || !getSubBlockSparsity) {
                                     triplets.emplace_back(rowIdx, colIdx, v_ij);
-                                    // Add lower-triangular entry for symmetric matrices
-                                    if (isSymmetric() && r != c) {
-                                        triplets.emplace_back(colIdx, rowIdx, v_ij);
-                                    }
                                 }
                             }
                         }
