@@ -1,5 +1,3 @@
-#pragma once
-
 #include <matrixoperator/matrixbase.hpp>
 
 #include <stdexcept>
@@ -41,4 +39,4 @@ namespace finalicp {
     bool BlockMatrixBase::isSymmetric() const {
         return symmetric_;
     }
-}
+} // finalicp
