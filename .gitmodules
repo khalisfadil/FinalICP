@@ -1,6 +1,1 @@
-[submodule "lgmath"]
-	path = 3rdparty/lgmath
-	url = https://github.com/khalisfadil/liegroupMath.git
-[submodule "robin"]
-	path = 3rdparty/robin
-	url = https://github.com/Tessil/robin-map.git
+
