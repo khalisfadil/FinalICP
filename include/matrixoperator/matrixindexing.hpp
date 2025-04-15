@@ -73,4 +73,4 @@ namespace finalicp{
             //Whether matrix is block-size-symmetric
             bool blkSizeSymmetric_;
     };
-}
+} // finalicp
