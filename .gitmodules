@@ -1,3 +1,6 @@
 [submodule "lgmath"]
 	path = lgmath
 	url = https://github.com/khalisfadil/liegroupMath.git
+[submodule "robin"]
+	path = robin
+	url = https://github.com/Tessil/robin-map.git
