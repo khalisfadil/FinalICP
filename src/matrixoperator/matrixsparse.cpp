@@ -15,12 +15,14 @@ namespace finalicp{
                                         const std::vector<unsigned int>& blkColSizes)
         : BlockMatrixBase(blkRowSizes, blkColSizes) {
         // Setup data structures
+        cols_.clear();
         cols_.resize(getIndexing().colIndexing().numEntries());
     }
 
     BlockSparseMatrix::BlockSparseMatrix(const std::vector<unsigned int>& blkSizes, bool symmetric)
         : BlockMatrixBase(blkSizes, symmetric) {
         // Setup data structures
+        cols_.clear();
         cols_.resize(getIndexing().colIndexing().numEntries());
     }
 
@@ -29,232 +31,218 @@ namespace finalicp{
     // -----------------------------------------------------------------------------
 
     void BlockSparseMatrix::clear() {
-        tbb::parallel_for(
-            tbb::blocked_range<unsigned int>(0, getIndexing().colIndexing().numEntries()),
-            [&](const tbb::blocked_range<unsigned int>& range) {
-                for (unsigned int c = range.begin(); c != range.end(); ++c) {
-                    cols_[c].rows.clear();
-                }
-            });
+        for (unsigned int c = 0; c < this->getIndexing().colIndexing().numEntries(); c++) {
+            cols_[c].rows.clear();
+        }
     }
 
+
     void BlockSparseMatrix::zero() {
-        tbb::parallel_for(
-            tbb::blocked_range<unsigned int>(0, getIndexing().colIndexing().numEntries()),
-            [&](const tbb::blocked_range<unsigned int>& range) {
-                for (unsigned int c = range.begin(); c != range.end(); ++c) {
-                    for (auto it = cols_[c].rows.begin(); it != cols_[c].rows.end(); ++it) {
-                        it->second.data.setZero();
-                    }
-                }
-            });
+        for (unsigned int c = 0; c < this->getIndexing().colIndexing().numEntries(); c++) {
+            for(std::map<unsigned int, BlockRowEntry>::iterator it = cols_[c].rows.begin();
+                it != cols_[c].rows.end(); ++it) {
+                it->second.data.setZero();
+            }
+        }
     }
 
     void BlockSparseMatrix::add(unsigned int r, unsigned int c, const Eigen::MatrixXd& m) {
-        // Cache indexing object
-        const BlockMatrixIndexing& indexing = getIndexing();
-        const BlockDimIndexing& rowIndexing = indexing.rowIndexing();
-        const BlockDimIndexing& colIndexing = indexing.colIndexing();
+        // Get references to indexing objects
+        const BlockDimIndexing& blkRowIndexing = this->getIndexing().rowIndexing();
+        const BlockDimIndexing& blkColIndexing = this->getIndexing().colIndexing();
 
-        // Validate indices
-        if (r >= rowIndexing.numEntries() || c >= colIndexing.numEntries()) {
-            throw std::invalid_argument("[BlockSparseMatrix::add] Block indices (" + std::to_string(r) + ", " +
-                                    std::to_string(c) + ") out of bounds");
+        // Check if indexing is valid
+        if (r >= blkRowIndexing.numEntries() || c >= blkColIndexing.numEntries()) {
+            throw std::invalid_argument("[BlockSparseMatrix::add] Invalid row or column index for block structure.");
         }
 
-        // Enforce upper-triangular for symmetric matrices
-        if (isSymmetric() && r > c) {
-            return; // Silently ignore for efficiency
+        // Early symmetric check to avoid unnecessary work
+        if (this->isSymmetric() && r > c) {
+            std::cout << "[BlockSparseMatrix::add] Ignored add operation to lower half of upper-symmetric block-sparse matrix." << std::endl;
+            return;
         }
 
-        // Validate block dimensions
-        if (m.rows() != static_cast<int>(rowIndexing.blkSizeAt(r)) ||
-            m.cols() != static_cast<int>(colIndexing.blkSizeAt(c))) {
-            throw std::invalid_argument("[BlockSparseMatrix::add] Block at (" + std::to_string(r) + ", " + std::to_string(c) +
-                                    ") has incorrect size: expected (" +
-                                    std::to_string(rowIndexing.blkSizeAt(r)) + ", " +
-                                    std::to_string(colIndexing.blkSizeAt(c)) + "), got (" +
-                                    std::to_string(m.rows()) + ", " + std::to_string(m.cols()) + ")");
+        // Validate matrix dimensions
+        if (m.rows() != static_cast<int>(blkRowIndexing.blkSizeAt(r)) ||
+            m.cols() != static_cast<int>(blkColIndexing.blkSizeAt(c))) {
+            throw std::invalid_argument("[BlockSparseMatrix::add] Matrix dimensions do not match block structure at row " +
+                                        std::to_string(r) + ", col " + std::to_string(c));
         }
 
-        // Thread-safe insert or update
-        tbb::concurrent_hash_map<unsigned int, BlockRowEntry>::accessor acc;
-        if (cols_[c].rows.insert(acc, r)) {
-            acc->second.data = m; // New entry
+        // Direct insertion or update using try_emplace for efficiency
+        auto& rowMap = cols_[c].rows;
+        auto [it, inserted] = rowMap.try_emplace(r, BlockRowEntry());
+        if (inserted) {
+            it->second.data = m; // New entry
         } else {
-            acc->second.data += m; // Accumulate
+            it->second.data += m; // Add to existing entry
         }
     }
 
     BlockSparseMatrix::BlockRowEntry& BlockSparseMatrix::rowEntryAt(unsigned int r, unsigned int c, bool allowInsert) {
-        // Cache indexing object
-        const BlockMatrixIndexing& indexing = getIndexing();
-        const BlockDimIndexing& rowIndexing = indexing.rowIndexing();
-        const BlockDimIndexing& colIndexing = indexing.colIndexing();
+        // Cache indexing objects
+        const BlockDimIndexing& rowIndexing = this->getIndexing().rowIndexing();
+        const BlockDimIndexing& colIndexing = this->getIndexing().colIndexing();
 
         // Validate indices
         if (r >= rowIndexing.numEntries() || c >= colIndexing.numEntries()) {
-            throw std::invalid_argument("[BlockSparseMatrix::rowEntryAt] Block indices (" + std::to_string(r) + ", " +
-                                    std::to_string(c) + ") out of bounds");
+            throw std::invalid_argument("[BlockSparseMatrix::rowEntryAt] Invalid row or column index for block structure.");
         }
 
-        // Enforce upper-triangular for symmetric matrices
-        if (isSymmetric() && r > c) {
-            throw std::invalid_argument("[BlockSparseMatrix::rowEntryAt] Cannot access lower triangle of symmetric matrix at (" +
-                                    std::to_string(r) + ", " + std::to_string(c) + ")");
+        // Check symmetric matrix constraints
+        if (this->isSymmetric() && r > c) {
+            std::cout << "[BlockSparseMatrix::rowEntryAt] Cannot access lower half of upper-symmetric block-sparse matrix." << std::endl;
+            throw std::invalid_argument("Invalid access to lower-triangular block in symmetric matrix.");
         }
 
-        // Thread-safe access or insert
-        tbb::concurrent_hash_map<unsigned int, BlockRowEntry>::accessor acc;
-        if (cols_[c].rows.find(acc, r)) {
-            return acc->second; // Existing entry
-        }
-        if (!allowInsert) {
-            throw std::invalid_argument("[BlockSparseMatrix::rowEntryAt] Block at (" + std::to_string(r) + ", " +
-                                    std::to_string(c) + ") does not exist");
-        }
+        // Access column
+        BlockSparseColumn& colRef = cols_[c];
 
-        // Insert new zero-initialized entry
-        cols_[c].rows.insert(acc, r);
-        acc->second.data = Eigen::MatrixXd::Zero(rowIndexing.blkSizeAt(r), colIndexing.blkSizeAt(c));
-        return acc->second;
+        // Try to find or insert row entry
+        auto& rowMap = colRef.rows;
+        if (allowInsert) {
+            auto [it, inserted] = rowMap.try_emplace(r, BlockRowEntry());
+            if (inserted) {
+                it->second.data = Eigen::MatrixXd::Zero(rowIndexing.blkSizeAt(r), colIndexing.blkSizeAt(c));
+            }
+            return it->second;
+        } else {
+            auto it = rowMap.find(r);
+            if (it == rowMap.end()) {
+                throw std::invalid_argument("[BlockSparseMatrix::rowEntryAt] Requested block at (" + std::to_string(r) + ", " + std::to_string(c) + ") does not exist.");
+            }
+            return it->second;
+        }
     }
 
     Eigen::MatrixXd& BlockSparseMatrix::at(unsigned int r, unsigned int c) {
-        // Cache indexing object
-        const BlockMatrixIndexing& indexing = getIndexing();
-        const BlockDimIndexing& rowIndexing = indexing.rowIndexing();
-        const BlockDimIndexing& colIndexing = indexing.colIndexing();
+        // Cache indexing objects
+        const BlockDimIndexing& rowIndexing = this->getIndexing().rowIndexing();
+        const BlockDimIndexing& colIndexing = this->getIndexing().colIndexing();
 
         // Validate indices
         if (r >= rowIndexing.numEntries() || c >= colIndexing.numEntries()) {
-            throw std::invalid_argument("[BlockSparseMatrix::at] Block indices (" + std::to_string(r) + ", " +
-                                    std::to_string(c) + ") out of bounds");
+            throw std::invalid_argument("[BlockSparseMatrix::at] Invalid row or column index for block structure.");
         }
 
-        // Enforce upper-triangular for symmetric matrices
-        if (isSymmetric() && r > c) {
-            throw std::invalid_argument("[BlockSparseMatrix::at] Cannot access lower triangle of symmetric matrix at (" +
-                                    std::to_string(r) + ", " + std::to_string(c) + ")");
+        // Check symmetric matrix constraints
+        if (this->isSymmetric() && r > c) {
+            throw std::invalid_argument("[BlockSparseMatrix::at] Invalid access to lower-triangular block in symmetric matrix at (" +
+                                        std::to_string(r) + ", " + std::to_string(c) + ").");
         }
 
-        // Thread-safe access
-        tbb::concurrent_hash_map<unsigned int, BlockRowEntry>::accessor acc;
-        if (!cols_[c].rows.find(acc, r)) {
-            throw std::invalid_argument("[BlockSparseMatrix::at] Block at (" + std::to_string(r) + ", " +
-                                    std::to_string(c) + ") does not exist");
+        // Access column and find row entry
+        auto& rowMap = cols_[c].rows;
+        auto it = rowMap.find(r);
+        if (it == rowMap.end()) {
+            throw std::invalid_argument("[BlockSparseMatrix::at] Block at (" + std::to_string(r) + ", " + std::to_string(c) + ") does not exist.");
         }
 
-        return acc->second.data;
+        return it->second.data;
     }
 
     Eigen::MatrixXd BlockSparseMatrix::copyAt(unsigned int r, unsigned int c) const {
-        // Cache indexing object
-        const BlockMatrixIndexing& indexing = getIndexing();
-        const BlockDimIndexing& rowIndexing = indexing.rowIndexing();
-        const BlockDimIndexing& colIndexing = indexing.colIndexing();
+        // Cache indexing objects
+        const BlockDimIndexing& rowIndexing = this->getIndexing().rowIndexing();
+        const BlockDimIndexing& colIndexing = this->getIndexing().colIndexing();
 
         // Validate indices
         if (r >= rowIndexing.numEntries() || c >= colIndexing.numEntries()) {
-            throw std::invalid_argument("[BlockSparseMatrix::copyAt] Block indices (" + std::to_string(r) + ", " +
-                                    std::to_string(c) + ") out of bounds");
+            throw std::invalid_argument("[BlockSparseMatrix::copyAt] Invalid row or column index for block structure.");
         }
 
-        // Prepare zero matrix for non-existing entries
-        Eigen::MatrixXd zeroMatrix = Eigen::MatrixXd::Zero(rowIndexing.blkSizeAt(r),
-                                                        colIndexing.blkSizeAt(c));
+        // Determine which block to access (symmetric case uses (c, r) for lower triangle)
+        unsigned int colIdx = this->isSymmetric() && r > c ? r : c;
+        unsigned int rowIdx = this->isSymmetric() && r > c ? c : r;
 
-        // Handle symmetric lower-triangular access
-        if (isSymmetric() && r > c) {
-            tbb::concurrent_hash_map<unsigned int, BlockRowEntry>::const_accessor acc;
-            if (cols_[r].rows.find(acc, c)) {
-                return acc->second.data.transpose();
-            }
-            return zeroMatrix;
+        // Find row entry
+        auto& rowMap = cols_[colIdx].rows;
+        auto it = rowMap.find(rowIdx);
+        if (it == rowMap.end()) {
+            return Eigen::MatrixXd::Zero(rowIndexing.blkSizeAt(r), colIndexing.blkSizeAt(c));
         }
 
-        // Handle non-symmetric or upper-triangular access
-        tbb::concurrent_hash_map<unsigned int, BlockRowEntry>::const_accessor acc;
-        if (cols_[c].rows.find(acc, r)) {
-            return acc->second.data;
-        }
-        return zeroMatrix;
-    }
-
-    Eigen::VectorXi BlockSparseMatrix::getNnzPerCol() const {
-        // Cache indexing object
-        const BlockMatrixIndexing& indexing = getIndexing();
-        const BlockDimIndexing& colIndexing = indexing.colIndexing();
-
-        // Allocate result vector
-        Eigen::VectorXi result(colIndexing.scalarSize());
-
-        // Parallel computation of non-zero counts
-        tbb::parallel_for(
-            tbb::blocked_range<unsigned int>(0, colIndexing.numEntries()),
-            [&](const tbb::blocked_range<unsigned int>& range) {
-                for (unsigned int c = range.begin(); c != range.end(); ++c) {
-                    unsigned int nnz = 0;
-                    for (auto it = cols_[c].rows.begin(); it != cols_[c].rows.end(); ++it) {
-                        nnz += it->second.data.rows();
-                    }
-                    result.segment(colIndexing.cumSumAt(c), colIndexing.blkSizeAt(c)).setConstant(nnz);
-                }
-            });
-
-        return result;
+        // Return data (transpose for symmetric lower-triangular access)
+        return (this->isSymmetric() && r > c) ? it->second.data.transpose() : it->second.data;
     }
 
     Eigen::SparseMatrix<double> BlockSparseMatrix::toEigen(bool getSubBlockSparsity) const {
         // Cache indexing objects
-        const BlockMatrixIndexing& indexing = getIndexing();
-        const BlockDimIndexing& rowIndexing = indexing.rowIndexing();
-        const BlockDimIndexing& colIndexing = indexing.colIndexing();
+        const BlockDimIndexing& rowIndexing = this->getIndexing().rowIndexing();
+        const BlockDimIndexing& colIndexing = this->getIndexing().colIndexing();
 
-        // Allocate sparse matrix
+        // Initialize sparse matrix
         Eigen::SparseMatrix<double> mat(rowIndexing.scalarSize(), colIndexing.scalarSize());
-        mat.reserve(getNnzPerCol());
+        mat.reserve(this->getNnzPerCol());
 
-        // Collect triplets in parallel
-        tbb::concurrent_vector<std::tuple<unsigned int, unsigned int, double>> triplets;
-        tbb::parallel_for(
-            tbb::blocked_range<unsigned int>(0, colIndexing.numEntries()),
-            [&](const tbb::blocked_range<unsigned int>& range) {
-                for (unsigned int c = range.begin(); c != range.end(); ++c) {
-                    unsigned int colBlkSize = colIndexing.blkSizeAt(c);
-                    unsigned int colCumSum = colIndexing.cumSumAt(c);
-                    for (auto it = cols_[c].rows.begin(); it != cols_[c].rows.end(); ++it) {
-                        unsigned int r = it->first;
-                        // Skip lower-triangular blocks for symmetric matrices
-                        if (isSymmetric() && r > c) {
-                            continue;
-                        }
-                        unsigned int rowBlkSize = rowIndexing.blkSizeAt(r);
-                        unsigned int rowCumSum = rowIndexing.cumSumAt(r);
+        // Use triplet list for efficient insertion
+        std::vector<Eigen::Triplet<double>> triplets;
+        triplets.reserve(getNnzPerCol().sum()); // Approximate capacity
 
-                        unsigned int colIdx = colCumSum;
-                        for (unsigned int j = 0; j < colBlkSize; ++j, ++colIdx) {
-                            unsigned int rowIdx = rowCumSum;
-                            for (unsigned int i = 0; i < rowBlkSize; ++i, ++rowIdx) {
-                                double v_ij = it->second.data(i, j);
-                                if (std::fabs(v_ij) > 1e-10 || !getSubBlockSparsity) {
-                                    triplets.emplace_back(rowIdx, colIdx, v_ij);
-                                }
+        // Iterate over block-sparse columns
+        for (unsigned int c = 0; c < colIndexing.numEntries(); ++c) {
+            unsigned int colBlkSize = colIndexing.blkSizeAt(c);
+            unsigned int colCumSum = colIndexing.cumSumAt(c);
+
+            // Iterate over non-zero rows in the column
+            for (const auto& [r, entry] : cols_[c].rows) {
+                unsigned int rowBlkSize = rowIndexing.blkSizeAt(r);
+                unsigned int rowCumSum = rowIndexing.cumSumAt(r);
+
+                // Skip lower-triangular blocks for symmetric matrices
+                if (this->isSymmetric() && r > c) {
+                    continue;
+                }
+
+                // Iterate over block elements in column-major order
+                for (unsigned int j = 0; j < colBlkSize; ++j) {
+                    for (unsigned int i = 0; i < rowBlkSize; ++i) {
+                        double v_ij = entry.data(i, j);
+                        if (!getSubBlockSparsity || std::abs(v_ij) > 1e-15) {
+                            unsigned int rowIdx = rowCumSum + i;
+                            unsigned int colIdx = colCumSum + j;
+                            triplets.emplace_back(rowIdx, colIdx, v_ij);
+
+                            // Add mirrored entry for symmetric matrices
+                            if (this->isSymmetric() && r != c) {
+                                triplets.emplace_back(colCumSum + j, rowCumSum + i, v_ij);
                             }
                         }
                     }
                 }
-            });
-
-        // Insert triplets sequentially
-        for (const auto& [row, col, val] : triplets) {
-            mat.insert(row, col) = val;
+            }
         }
 
-        // Compress into compact format
+        // Build sparse matrix from triplets
+        mat.setFromTriplets(triplets.begin(), triplets.end());
         mat.makeCompressed();
 
         return mat;
+    }
+
+    Eigen::VectorXi BlockSparseMatrix::getNnzPerCol() const {
+        // Cache column indexing
+        const BlockDimIndexing& colIndexing = this->getIndexing().colIndexing();
+
+        // Initialize result vector
+        Eigen::VectorXi result = Eigen::VectorXi::Zero(colIndexing.scalarSize());
+
+        // Iterate over block columns
+        for (unsigned int c = 0; c < colIndexing.numEntries(); ++c) {
+            unsigned int colBlkSize = colIndexing.blkSizeAt(c);
+            unsigned int colCumSum = colIndexing.cumSumAt(c);
+
+            // Count non-zero scalar rows in this block column
+            unsigned int nnz = 0;
+            for (const auto& [r, entry] : cols_[c].rows) {
+                nnz += entry.data.rows();
+            }
+
+            // Assign nnz to all scalar columns in this block
+            result.segment(colCumSum, colBlkSize).setConstant(nnz);
+        }
+
+        return result;
     }
 
 } // namespace finalicp

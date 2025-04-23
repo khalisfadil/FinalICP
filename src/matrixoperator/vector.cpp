@@ -27,41 +27,68 @@ namespace finalicp{
 
     void BlockVector::setFromScalar(const Eigen::VectorXd& v) {
         if (indexing_.scalarSize() != static_cast<unsigned int>(v.size())) {
-            throw std::invalid_argument("[BlockVector] Block row size: " + std::to_string(indexing_.scalarSize()) +
+            throw std::invalid_argument("[BlockVector::setFromScalar] Block row size: " + std::to_string(indexing_.scalarSize()) +
                                     " and vector size: " + std::to_string(v.size()) + " do not match.");
         }
         data_ = v;
     }
 
-    const BlockDimIndexing& BlockVector::getIndexing() {
+    const BlockDimIndexing& BlockVector::getIndexing() const {
         return indexing_;
     }
 
-    void BlockVector::add(const unsigned int& r, const Eigen::VectorXd& v) {
+    void BlockVector::add(unsigned int r, const Eigen::VectorXd& v) {
+        // Validate row index
         if (r >= indexing_.numEntries()) {
-            throw std::invalid_argument("[BlockVector] Requested row index out of bounds");
+            throw std::invalid_argument("[BlockVector::add] Invalid row index: " + std::to_string(r));
         }
-        if (v.size() != indexing_.blkSizeAt(r)) {
-            throw std::invalid_argument("[BlockVector] Block row size and vector size do not match");
+
+        // Cache block size
+        unsigned int blkSize = indexing_.blkSizeAt(r);
+
+        // Validate vector size
+        if (v.rows() != static_cast<int>(blkSize)) {
+            throw std::invalid_argument("[BlockVector::add] Vector size (" + std::to_string(v.rows()) + 
+                                    ") does not match block size (" + std::to_string(blkSize) + ")");
         }
-        data_.segment(indexing_.cumSumAt(r), indexing_.blkSizeAt(r)) += v;
+
+        // Add vector to the corresponding block
+        data_.segment(indexing_.cumSumAt(r), blkSize) += v;
     }
 
-    Eigen::VectorXd BlockVector::at(const unsigned int& r) {
+    Eigen::VectorXd BlockVector::at(unsigned int r) const {
+        // Validate row index
         if (r >= indexing_.numEntries()) {
-            throw std::invalid_argument("Requested row index out of bounds");
+            throw std::invalid_argument("[BlockVector::at] Invalid row index: " + std::to_string(r));
         }
-        return data_.segment(indexing_.cumSumAt(r), indexing_.blkSizeAt(r));
+
+        // Cache block size and offset
+        unsigned int blkSize = indexing_.blkSizeAt(r);
+        unsigned int offset = indexing_.cumSumAt(r);
+
+        // Return copy of the block
+        return data_.segment(offset, blkSize);
     }
 
-    Eigen::Map<Eigen::VectorXd> BlockVector::mapAt(const unsigned int& r) {
+    Eigen::Map<const Eigen::VectorXd> BlockVector::mapAt(unsigned int r) const {
         if (r >= indexing_.numEntries()) {
-            throw std::invalid_argument("Requested row index out of bounds");
+            throw std::invalid_argument("[BlockVector::mapAt] Invalid row index: " + std::to_string(r));
         }
-        return Eigen::Map<Eigen::VectorXd>(data_.data() + indexing_.cumSumAt(r), indexing_.blkSizeAt(r));
+        unsigned int blkSize = indexing_.blkSizeAt(r);
+        unsigned int offset = indexing_.cumSumAt(r);
+        return Eigen::Map<const Eigen::VectorXd>(data_.data() + offset, blkSize);
     }
 
-    const Eigen::VectorXd& BlockVector::toEigen() {
+    Eigen::Map<Eigen::VectorXd> BlockVector::mapAt(unsigned int r) {
+        if (r >= indexing_.numEntries()) {
+            throw std::invalid_argument("[BlockVector::mapAt] Invalid row index: " + std::to_string(r));
+        }
+        unsigned int blkSize = indexing_.blkSizeAt(r);
+        unsigned int offset = indexing_.cumSumAt(r);
+        return Eigen::Map<Eigen::VectorXd>(data_.data() + offset, blkSize);
+    }
+
+    const Eigen::VectorXd& BlockVector::toEigen() const {
         return data_;
     }
 

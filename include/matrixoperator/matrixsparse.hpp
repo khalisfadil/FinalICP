@@ -1,18 +1,16 @@
 #pragma once
 
-#include <tbb/concurrent_hash_map.h>
-#include <tbb/parallel_for.h>
-#include <tbb/concurrent_vector.h>
+#include <vector>
+#include <map>
 
 #include <Eigen/Core>
 #include <Eigen/Sparse>
-#include <tuple>
 
 #include <matrixoperator/matrixbase.hpp>
 
 namespace finalicp{
     
-    //A thread-safe, block-sparse matrix optimized with Intel TBB for real-time performance.
+    //A thread-safe, block-sparse matrix optimized.
     class BlockSparseMatrix : public BlockMatrixBase {
         public:
             //Represents a single dense block in the matrix.
@@ -75,12 +73,10 @@ namespace finalicp{
                     ~BlockSparseColumn() {}
 
                     //thread safe map
-                    tbb::concurrent_hash_map<unsigned int, BlockRowEntry> rows;
+                    std::map<unsigned int, BlockRowEntry> rows;
             };
 
             //Column-wise storage of sparse blocks.
             std::vector<BlockSparseColumn> cols_;         
-
-
     };
 } // namespace finalicp

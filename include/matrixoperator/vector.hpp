@@ -7,42 +7,44 @@
 
 #include <matrixoperator/matrixindexing.hpp>
 
-namespace finalicp{
-    class BlockVector{
+namespace finalicp {
+    class BlockVector {
+    public:
+        // Default constructor
+        BlockVector();
 
-        public:
-            //Default constructor.
-            BlockVector();
+        // Block size constructor
+        BlockVector(const std::vector<unsigned int>& blkRowSizes);
 
-            //Block size constructor
-            BlockVector(const std::vector<unsigned int>& blkRowSizes);
+        // Block size (with data) constructor
+        BlockVector(const std::vector<unsigned int>& blkRowSizes, const Eigen::VectorXd& data);
 
-            //Block size (with data) constructor
-            BlockVector(const std::vector<unsigned int>& blkRowSizes, const Eigen::VectorXd& data);
+        // Set internal data (total size of v must match concatenated block sizes)
+        void setFromScalar(const Eigen::VectorXd& v);
 
-            //Set internal data (total size of v must match concatenated block sizes)
-            void setFromScalar(const Eigen::VectorXd& v);
+        // Get indexing object
+        const BlockDimIndexing& getIndexing() const;
 
-            //Get indexing object
-            const BlockDimIndexing& getIndexing();
+        // Adds the vector to the block entry at index 'r', block dim must match
+        void add(unsigned int r, const Eigen::VectorXd& v);
 
-            //Adds the vector to the block entry at index 'r', block dim must match
-            void add(const unsigned int& r, const Eigen::VectorXd& v);
+        // Return block vector at index 'r'
+        Eigen::VectorXd at(unsigned int r) const;
 
-            //Return block vector at index 'r'
-            Eigen::VectorXd at(const unsigned int& r);
+        // Return map to block vector at index 'r' (read-only)
+        Eigen::Map<const Eigen::VectorXd> mapAt(unsigned int r) const;
 
-            //Return map to block vector at index 'r'
-            Eigen::Map<Eigen::VectorXd> mapAt(const unsigned int& r);
+        // Return map to block vector at index 'r' (writable)
+        Eigen::Map<Eigen::VectorXd> mapAt(unsigned int r);
 
-            //Convert to Eigen dense vector format
-            const Eigen::VectorXd& toEigen();
+        // Convert to Eigen dense vector format
+        const Eigen::VectorXd& toEigen() const; // Added const
 
-        private:
-            //Block indexing object
-            BlockDimIndexing indexing_;
+    private:
+        // Block indexing object
+        BlockDimIndexing indexing_;
 
-            //Vector data
-            Eigen::VectorXd data_;
+        // Vector data
+        Eigen::VectorXd data_;
     };
 } // namespace finalicp
