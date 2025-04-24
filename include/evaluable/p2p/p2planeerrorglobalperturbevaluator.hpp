@@ -9,24 +9,26 @@
 
 namespace finalicp {
     namespace p2p {
-        class P2PErrorEvaluator : public Evaluable<Eigen::Matrix<double, 3, 1>> {
+        class P2PlaneErrorGlobalPerturbEvaluator : public Evaluable<Eigen::Matrix<double, 1, 1>> {
             public:
-                using Ptr = std::shared_ptr<P2PErrorEvaluator>;
-                using ConstPtr = std::shared_ptr<const P2PErrorEvaluator>;
+                using Ptr = std::shared_ptr<P2PlaneErrorGlobalPerturbEvaluator>;
+                using ConstPtr = std::shared_ptr<const P2PlaneErrorGlobalPerturbEvaluator>;
 
                 using InType = math::se3::Transformation;
-                using OutType = Eigen::Matrix<double, 3, 1>;
+                using OutType = Eigen::Matrix<double, 1, 1>;
                 using Time = traj::Time;
 
                 //Factory method to create an instance.
                 static Ptr MakeShared(const Evaluable<InType>::ConstPtr &T_rq,
-                                        const Eigen::Vector3d &reference,
-                                        const Eigen::Vector3d &query);
+                                            const Eigen::Vector3d &reference,
+                                            const Eigen::Vector3d &query,
+                                            const Eigen::Vector3d &normal);
 
                 //Constructor.
-                P2PErrorEvaluator(const Evaluable<InType>::ConstPtr &T_rq,
-                                        const Eigen::Vector3d &reference,
-                                        const Eigen::Vector3d &query);
+                P2PlaneErrorGlobalPerturbEvaluator(const Evaluable<InType>::ConstPtr &T_rq,
+                                            const Eigen::Vector3d &reference,
+                                            const Eigen::Vector3d &query,
+                                            const Eigen::Vector3d &normal);
 
                 //Checks if the DMI error is influenced by active state variables.
                 bool active() const override;
@@ -60,15 +62,15 @@ namespace finalicp {
                 
             private:
                 const Evaluable<InType>::ConstPtr T_rq_;
-                Eigen::Matrix<double, 3, 4> D_ = Eigen::Matrix<double, 3, 4>::Zero();
-                Eigen::Vector4d reference_ = Eigen::Vector4d::Constant(1);
-                Eigen::Vector4d query_ = Eigen::Vector4d::Constant(1);
+                const Eigen::Vector3d reference_;
+                const Eigen::Vector3d query_;
+                const Eigen::Vector3d normal_;
                 bool time_init_ = false;
-                Time time_; 
+                Time time_;
         };
 
         //Factory function for creating a GyroErrorEvaluator.
-        P2PErrorEvaluator::Ptr p2pError(const Evaluable<P2PErrorEvaluator::InType>::ConstPtr &T_rq,
-                                        const Eigen::Vector3d &reference, const Eigen::Vector3d &query);
+        P2PlaneErrorGlobalPerturbEvaluator::Ptr p2planeGlobalError(const Evaluable<P2PlaneErrorGlobalPerturbEvaluator::InType>::ConstPtr &T_rq,
+                                                                    const Eigen::Vector3d &reference, const Eigen::Vector3d &query, const Eigen::Vector3d &normal);
      }  // namespace p2p
 }  // namespace finalicp
