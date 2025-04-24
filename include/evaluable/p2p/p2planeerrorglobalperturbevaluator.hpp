@@ -58,7 +58,7 @@ namespace finalicp {
                     throw std::runtime_error("P2P measurement time was not initialized");
                 }
 
-                Eigen::Matrix<double, 3, 6> getJacobianPose() const;
+                Eigen::Matrix<double, 1, 6> getJacobianPose() const;
                 
             private:
                 const Evaluable<InType>::ConstPtr T_rq_;

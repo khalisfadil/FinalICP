@@ -85,7 +85,7 @@ namespace finalicp{
                 if (active()) jacs.add(key(), lhs);
             }
 
-        private: 
+        protected: 
 
             T value_;
 
