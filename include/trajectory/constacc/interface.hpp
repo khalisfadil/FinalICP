@@ -3,8 +3,8 @@
 #include <Eigen/Core>
 
 #include <problem/costterm/weightleastsqcostterm.hpp>
-#include <solver/covariance.hpp>
 #include <problem/problem.hpp>
+#include <solver/covariance.hpp>
 #include <trajectory/constacc/variable.hpp>
 #include <trajectory/interface.hpp>
 #include <trajectory/time.hpp>

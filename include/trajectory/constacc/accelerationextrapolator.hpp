@@ -39,7 +39,7 @@ namespace finalicp {
                 //Computes the backward pass, accumulating Jacobians.
                 void backward(const Eigen::MatrixXd& lhs, const Node<OutType>::Ptr& node, Jacobians& jacs) const override;
 
-            private:
+            protected:
 
                 const Variable::ConstPtr knot_;                 //The knot (state) to extrapolate from.
                 Eigen::Matrix<double, 18, 18> Phi_;             //Transition matrix for constant acceleration extrapolation

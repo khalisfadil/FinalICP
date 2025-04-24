@@ -43,7 +43,7 @@ namespace finalicp {
                 //Computes the backward pass, accumulating Jacobians.
                 void backward(const Eigen::MatrixXd& lhs, const Node<OutType>::Ptr& node, Jacobians& jacs) const override;
 
-            private:
+            protected:
 
                 const Variable::ConstPtr knot1_;                //First (earlier) knot in the trajectory
                 const Variable::ConstPtr knot2_;                //Second (later) knot in the trajectory.

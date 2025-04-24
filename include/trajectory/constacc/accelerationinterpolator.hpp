@@ -46,7 +46,7 @@ namespace finalicp {
                 Eigen::Matrix<double, 18, 18> omega_;           //Omega matrix used for interpolation calculations
                 Eigen::Matrix<double, 18, 18> lambda_;          //Lambda matrix used for interpolation calculations
 
-            private:
+            protected:
 
                 const Variable::ConstPtr knot1_;                //First (earlier) knot in the trajectory
                 const Variable::ConstPtr knot2_;                //Second (later) knot in the trajectory.
