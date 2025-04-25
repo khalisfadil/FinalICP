@@ -92,12 +92,12 @@ namespace finalicp{
         // Check symmetric matrix constraints
         if (this->isSymmetric() && r > c) {
             std::cout << "[BlockSparseMatrix::rowEntryAt] Cannot access lower half of upper-symmetric block-sparse matrix." << std::endl;
-            throw std::invalid_argument("Invalid access to lower-triangular block in symmetric matrix.");
+            throw std::invalid_argument("[BlockSparseMatrix::rowEntryAt] Invalid access to lower-triangular block in symmetric matrix.");
         }
 
         // Access column
+        tbb::spin_mutex::scoped_lock lock(cols_[c].mutex);
         BlockSparseColumn& colRef = cols_[c];
-
         // Try to find or insert row entry
         auto& rowMap = colRef.rows;
         if (allowInsert) {
