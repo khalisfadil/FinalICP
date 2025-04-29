@@ -1,150 +1,727 @@
-#pragma once
-
-#include <trajectory/constvel/helper.hpp>
-#include <evaluable/se3/se3statevar.hpp> 
-#include <evaluable/statevar.hpp>
-#include <evaluable/vspace/vspacestatevar.hpp> 
-#include <problem/costterm/basecostterm.hpp>
-#include <problem/costterm/p2psupercostterm.hpp>
-#include <problem/costterm/imusupercostterm.hpp>
-#include <problem/lossfunc/lossfunc.hpp>
-#include <problem/problem.hpp>
-#include <trajectory/constvel/interface.hpp>
-#include <trajectory/time.hpp>
+#include <problem/costterm/p2pglobalperturbsupercostterm.hpp> 
 
 #include <iostream>
 
 namespace finalicp {
 
-    struct IntegratedState {
-        Eigen::Matrix3d C_mr;
-        Eigen::Vector3d r_rm_in_m;
-        Eigen::Vector3d v_rm_in_m;
-        double timestamp;
-        Eigen::Matrix<double, 6, 15> jacobian;  // [dp / d delta x; dC / d delta x], x = (pos, rot, vel, b_a, b_g)
+    P2PGlobalSuperCostTerm::Ptr P2PGlobalSuperCostTerm::MakeShared(const Time time,
+                                                                        const Evaluable<PoseType>::ConstPtr &transform_r_to_m,
+                                                                        const Evaluable<VelType>::ConstPtr &v_m_to_r_in_m,
+                                                                        const Evaluable<BiasType>::ConstPtr &bias,
+                                                                        const Options &options,
+                                                                        const std::vector<IMUData> &imu_data_vec) {
+        return std::make_shared<P2PGlobalSuperCostTerm>(time, transform_r_to_m, v_m_to_r_in_m, bias, options, imu_data_vec);
+    }
 
-        IntegratedState(Eigen::Matrix3d C_mr_, Eigen::Vector3d r_rm_in_m_, Eigen::Vector3d v_rm_in_m_, double timestamp_) : C_mr(C_mr_), r_rm_in_m(r_rm_in_m_), v_rm_in_m(v_rm_in_m_), timestamp(timestamp_) {
-            jacobian = Eigen::Matrix<double, 6, 15>::Zero();
+    double P2PGlobalSuperCostTerm::cost() const {
+        // Initialize accumulators (thread-safe for parallel case)
+        std::atomic<double> total_cost{0.0};
+        std::atomic<size_t> nan_count{0};
+        std::atomic<size_t> exception_count{0};
+
+        // Compute states and pose times
+        const std::vector<IntegratedState> states = integrate_(false);
+        std::vector<double> pose_times;
+        for (const IntegratedState &state : states) {
+            pose_times.push_back(state.timestamp);
         }
-        IntegratedState() {}
-    };
 
-    class P2PGlobalSuperCostTerm : public BaseCostTerm {
+        const double rinv = 1.0 / options_.r_p2p;
+        const double sqrt_rinv = sqrt(rinv);
 
-        public:
+        // Sequential processing for small meas_times_ to avoid parallel overhead
+        if (meas_times_.size() < 100) { // Tune threshold via profiling
+            double cost = 0;
+            for (unsigned int i = 0; i < meas_times_.size(); ++i) {
+                try {
+                    const double &ts = meas_times_[i];
+                    const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
 
-            enum class LOSS_FUNC { L2, DCS, CAUCHY, GM };
-
-            struct Options {
-                int num_threads = 1;
-                LOSS_FUNC p2p_loss_func = LOSS_FUNC::CAUCHY;
-                double p2p_loss_sigma = 0.1;
-                double r_p2p = 1.0;
-                Eigen::Matrix<double, 3, 1> gravity = {0, 0, -9.8042};
-            };
-
-            using Ptr = std::shared_ptr<P2PGlobalSuperCostTerm>;
-            using ConstPtr = std::shared_ptr<const P2PGlobalSuperCostTerm>;
-            using PoseType = math::se3::Transformation;
-            using VelType = Eigen::Matrix<double, 3, 1>;
-            using BiasType = Eigen::Matrix<double, 6, 1>;
-            using Time = traj::Time;
-
-            //Factory method to create an instance of `IMUSuperCostTerm`.
-            static Ptr MakeShared(const Time time, const Evaluable<PoseType>::ConstPtr &transform_r_to_m, const Evaluable<VelType>::ConstPtr &v_m_to_r_in_m,
-                                    const Evaluable<BiasType>::ConstPtr &bias,const Options &options,const std::vector<IMUData> &imu_data_vec);
-
-            //Constructs the IMU-based cost term for trajectory optimization.
-            P2PGlobalSuperCostTerm(
-                const Time time,
-                const Evaluable<PoseType>::ConstPtr &transform_r_to_m,
-                const Evaluable<VelType>::ConstPtr &v_m_to_r_in_m,
-                const Evaluable<BiasType>::ConstPtr &bias,
-                const Options &options,
-                const std::vector<IMUData> &imu_data_vec)
-                : time_(time),
-                    transform_r_to_m_(transform_r_to_m),
-                    v_m_to_r_in_m_(v_m_to_r_in_m),
-                    bias_(bias),
-                    options_(options),
-                    curr_time_(time.seconds()) {
-
-                p2p_loss_func_ = [this]() -> BaseLossFunc::Ptr {
-                    switch (options_.p2p_loss_func) {
-                        case LOSS_FUNC::L2: return L2LossFunc::MakeShared();
-                        case LOSS_FUNC::DCS: return DcsLossFunc::MakeShared(options_.p2p_loss_sigma);
-                        case LOSS_FUNC::CAUCHY: return CauchyLossFunc::MakeShared(options_.p2p_loss_sigma);
-                        case LOSS_FUNC::GM: return GemanMcClureLossFunc::MakeShared(options_.p2p_loss_sigma);
-                        default:
-                        return nullptr;
+                    // Interpolation
+                    int start_index = 0, end_index = 0;
+                    for (size_t k = 0; k < pose_times.size(); ++k) {
+                        if (pose_times[k] > ts) {
+                            end_index = k;
+                            break;
+                        }
+                        start_index = k;
+                        end_index = k;
                     }
-                    return nullptr;
-                }();
-                gravity_ = options_.gravity;
-
-                for (auto imu_data : imu_data_vec) {
-                    imu_data_vec_.push_back(imu_data);
-                }
-
-                for (auto imu_data : imu_data_vec_) {
-                    if (imu_data.timestamp < curr_time_) {
-                        imu_before.push_back(imu_data);
+                    Eigen::Matrix3d C_mr = states[0].C_mr;
+                    Eigen::Vector3d r_rm_in_m = states[0].r_rm_in_m;
+                    double alpha = 0;
+                    if ((ts == pose_times[start_index]) || (start_index == end_index) || (pose_times[start_index] == pose_times[end_index])) {
+                        alpha = 0;
+                    } else if (ts == pose_times[end_index]) {
+                        alpha = 1;
                     } else {
-                        imu_after.push_back(imu_data);
+                        alpha = (ts - pose_times[start_index]) / (pose_times[end_index] - pose_times[start_index]);
                     }
-                }
+                    r_rm_in_m = alpha * states[end_index].r_rm_in_m + (1 - alpha) * states[start_index].r_rm_in_m;
+                    const Eigen::Vector3d phi = math::so3::rot2vec(states[start_index].C_mr.transpose() * states[end_index].C_mr);
+                    C_mr = states[start_index].C_mr * math::so3::vec2rot(alpha * phi);
 
-                if (imu_before.size() > 0) {
-                    std::reverse(imu_before.begin(), imu_before.end());
+                    double cost_i = 0.0;
+                    for (const int &match_idx : bin_indices) {
+                        const auto &p2p_match = p2p_matches_.at(match_idx);
+                        const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - C_mr * p2p_match.query - r_rm_in_m);
+                        double match_cost = p2p_loss_func_->cost(sqrt_rinv * fabs(raw_error));
+                        if (std::isnan(match_cost)) {
+                            ++nan_count;
+                        } else {
+                            cost_i += match_cost;
+                        }
+                    }
+
+                    if (!std::isnan(cost_i)) {
+                        cost += cost_i;
+                    }
+                } catch (const std::exception& e) {
+                    ++exception_count;
+                    std::cerr << "[P2PGlobalSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
+                } catch (...) {
+                    ++exception_count;
+                    std::cerr << "[P2PGlobalSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
                 }
             }
 
-            //Computes the cost contribution to the objective function.
-            double cost() const override;
+            if (nan_count > 0) {
+                std::cerr << "[P2PGlobalSuperCostTerm::cost] Warning: " << nan_count << " NaN cost terms ignored!" << std::endl;
+            }
+            if (exception_count > 0) {
+                std::cerr << "[P2PGlobalSuperCostTerm::cost] Warning: " << exception_count << " exceptions occurred!" << std::endl;
+            }
+            return cost;
+        }
 
-            //Retrieves the set of related variable keys.
-            void getRelatedVarKeys(KeySet &keys) const override;
+        // Parallel processing with TBB parallel_for for large meas_times_
+        tbb::global_control gc(tbb::global_control::max_allowed_parallelism, options_.num_threads);
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, meas_times_.size(), 100),
+            [&total_cost, &nan_count, &exception_count, &states, &pose_times, &sqrt_rinv, this](
+                const tbb::blocked_range<size_t>& range) {
+                for (size_t i = range.begin(); i != range.end(); ++i) {
+                    try {
+                        const double &ts = meas_times_[i];
+                        const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
 
-            //Initializes precomputed interpolation matrices and Jacobians.
-            void initP2PMatches();
+                        // Interpolation
+                        int start_index = 0, end_index = 0;
+                        for (size_t k = 0; k < pose_times.size(); ++k) {
+                            if (pose_times[k] > ts) {
+                                end_index = k;
+                                break;
+                            }
+                            start_index = k;
+                            end_index = k;
+                        }
+                        Eigen::Matrix3d C_mr = states[0].C_mr;
+                        Eigen::Vector3d r_rm_in_m = states[0].r_rm_in_m;
+                        double alpha = 0;
+                        if ((ts == pose_times[start_index]) || (start_index == end_index) || 
+                            (pose_times[start_index] == pose_times[end_index])) {
+                            alpha = 0;
+                        } else if (ts == pose_times[end_index]) {
+                            alpha = 1;
+                        } else {
+                            alpha = (ts - pose_times[start_index]) / (pose_times[end_index] - pose_times[start_index]);
+                        }
+                        r_rm_in_m = alpha * states[end_index].r_rm_in_m + (1 - alpha) * states[start_index].r_rm_in_m;
+                        const Eigen::Vector3d phi = math::so3::rot2vec(states[start_index].C_mr.transpose() * states[end_index].C_mr);
+                        C_mr = states[start_index].C_mr * math::so3::vec2rot(alpha * phi);
 
-            //Appends IMU data for cost term evaluation.
-            void emplace_back(P2PMatch &p2p_match) {p2p_matches_.emplace_back(p2p_match);}
+                        double cost_i = 0.0;
+                        for (const int &match_idx : bin_indices) {
+                            const auto &p2p_match = p2p_matches_.at(match_idx);
+                            const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - C_mr * p2p_match.query - r_rm_in_m);
+                            double match_cost = p2p_loss_func_->cost(sqrt_rinv * fabs(raw_error));
+                            if (std::isnan(match_cost)) {
+                                ++nan_count; // Atomic increment
+                            } else {
+                                cost_i += match_cost;
+                            }
+                        }
 
-            //Clears stored IMU data.
-            void clear() { p2p_matches_.clear(); }
+                        if (!std::isnan(cost_i)) {
+                            total_cost += cost_i; // Atomic addition
+                        }
+                    } catch (const std::exception& e) {
+                        ++exception_count; // Atomic increment
+                        std::cerr << "[P2PGlobalSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
+                    } catch (...) {
+                        ++exception_count; // Atomic increment
+                        std::cerr << "[P2PGlobalSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
+                    }
+                }
+            });
 
-            //Reserves space for IMU data storage.
-            void reserve(unsigned int N) { p2p_matches_.reserve(N); }
+        // Log warnings after parallel processing
+        if (nan_count > 0) {
+            std::cerr << "[P2PGlobalSuperCostTerm::cost] Warning: " << nan_count << " NaN cost terms ignored!" << std::endl;
+        }
+        if (exception_count > 0) {
+            std::cerr << "[P2PGlobalSuperCostTerm::cost] Warning: " << exception_count << " exceptions occurred!" << std::endl;
+        }
 
-            //Retrieves stored IMU data.
-            std::vector<P2PMatch> &get() { return p2p_matches_; }
+        return total_cost;
+    }
 
-            //Computes and accumulates Gauss-Newton terms for optimization.
-            void buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const override;
+    void P2PGlobalSuperCostTerm::getRelatedVarKeys(KeySet &keys) const {
+        transform_r_to_m_->getRelatedVarKeys(keys);
+        v_m_to_r_in_m_->getRelatedVarKeys(keys);
+        bias_->getRelatedVarKeys(keys);
+    }
 
-            std::vector<IntegratedState> integrate_(bool compute_jacobians) const;
+    void P2PGlobalSuperCostTerm::initP2PMatches() {
+        p2p_match_bins_.clear();
+        for (int i = 0; i < (int)p2p_matches_.size(); ++i) {
+            const auto &p2p_match = p2p_matches_.at(i);
+            const auto &timestamp = p2p_match.timestamp;
+            if (p2p_match_bins_.find(timestamp) == p2p_match_bins_.end()) {
+                p2p_match_bins_[timestamp] = {i};
+            } else {
+                p2p_match_bins_[timestamp].push_back(i);
+            }
+        }
+        meas_times_.clear();
+        for (auto it = p2p_match_bins_.begin(); it != p2p_match_bins_.end(); it++) {
+            meas_times_.push_back(it->first);
+        }
+        min_point_time_ = *std::min_element(meas_times_.begin(), meas_times_.end());
+        max_point_time_ = *std::max_element(meas_times_.begin(), meas_times_.end());
+        // initialize_interp_matrices_();
+    }
 
-            void set_min_time(double min_time) {min_point_time_ = min_time;}
+    std::vector<IntegratedState> P2PGlobalSuperCostTerm::integrate_(bool compute_jacobians) const {
+        const auto T_mr = transform_r_to_m_->forward()->value();
+        const Eigen::Matrix3d C_i = T_mr.C_ba();
+        const Eigen::Vector3d p_i = T_mr.r_ab_inb();
+        const Eigen::Vector3d v_i = v_m_to_r_in_m_->forward()->value();
+        const Eigen::Matrix<double, 6, 1> b = bias_->forward()->value();
+        const Eigen::Vector3d ba = b.block<3, 1>(0, 0);
+        const Eigen::Vector3d bg = b.block<3, 1>(3, 0);
+        
+        std::vector<IntegratedState> integrated_states;
 
-            void set_max_time(double max_time) {max_point_time_ = max_time;}
+        // initial state
+        IntegratedState state = IntegratedState(C_i, p_i, v_i, curr_time_);
+        if (compute_jacobians) {
+            // [dp / d delta x; dC / d delta x], x = (pos, rot, vel, b_a, b_g)
+            Eigen::Matrix<double, 6, 15> jacobian = Eigen::Matrix<double, 6, 15>::Zero();
+            jacobian.block<3, 3>(0, 0) = C_i;
+            jacobian.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity();
+            state.jacobian = jacobian;
+        }
+        integrated_states.push_back(state);
 
-        private:
-            const Time time_;
-            const Evaluable<PoseType>::ConstPtr transform_r_to_m_;
-            const Evaluable<VelType>::ConstPtr v_m_to_r_in_m_;
-            const Evaluable<BiasType>::ConstPtr bias_;
-            const Options options_;
-            const double curr_time_;
-            std::vector<IMUData> imu_data_vec_;
-            std::vector<IMUData> imu_before;
-            std::vector<IMUData> imu_after;
-            std::vector<P2PMatch> p2p_matches_;
-            std::map<double, std::vector<int>> p2p_match_bins_;
-            std::vector<double> meas_times_;
-            double min_point_time_ = 0;
-            double max_point_time_ = 0;
-            BaseLossFunc::Ptr p2p_loss_func_ = L2LossFunc::MakeShared();
-            Eigen::Vector3d gravity_ = {0, 0, -9.8042};
-    };
+        // before: (integrate backwards in time)
+        if (imu_before.size() > 0) {
+            Eigen::Matrix3d C_mr = C_i;
+            Eigen::Vector3d r_rm_in_m = p_i;
+            Eigen::Vector3d v_rm_in_m = v_i;
+            Eigen::Matrix3d C_ik = Eigen::Matrix3d::Identity();
+            // Jacobians
+            Eigen::Matrix3d drk_dbg = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dvk_dri = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dvk_dbg = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dvk_dba = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dpk_dri = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dpk_dbg = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dpk_dba = Eigen::Matrix3d::Zero();
+            double delta_t_ik = 0;
+            double delta_t = fabs(imu_before[0].timestamp - curr_time_);
+            if (delta_t > 1.0e-6) {
+                uint k = 0;
+                delta_t_ik += delta_t;
+                const Eigen::Vector3d phi_k = -1 * (imu_before[k].ang_vel - bg) * delta_t;
+                const Eigen::Matrix3d C_k_k_plus_1 = math::so3::vec2rot(phi_k);
+
+                C_mr = C_mr * C_k_k_plus_1;
+                v_rm_in_m -= ((C_mr * (imu_before[k].lin_acc - ba) + gravity_) * delta_t);
+                r_rm_in_m -= (v_rm_in_m * delta_t + 0.5 * (C_mr * (imu_before[k].lin_acc - ba) + gravity_) * delta_t * delta_t);
+                const Eigen::Matrix3d C_k = C_mr;
+
+                IntegratedState state = IntegratedState(C_mr, r_rm_in_m, v_rm_in_m, imu_before[k].timestamp);
+                if (compute_jacobians) {
+                    // note: we multiply phi_k by (-1) to convert left Jacobian to right Jacobian
+                    drk_dbg = C_k_k_plus_1.transpose() * drk_dbg + math::so3::vec2jac(-phi_k) * delta_t;
+                    C_ik = C_ik * C_k_k_plus_1;
+                    dvk_dri += C_k * math::so3::hat(imu_before[k].lin_acc - ba) * C_ik.transpose() * delta_t;
+                    dvk_dbg += C_k * math::so3::hat(imu_before[k].lin_acc - ba) * drk_dbg * delta_t;
+                    dvk_dba += C_k * delta_t;
+                    dpk_dri += -dvk_dri * delta_t + 0.5 * C_k * math::so3::hat(imu_before[k].lin_acc - ba) * C_ik.transpose() * delta_t * delta_t;
+                    dpk_dbg += -dvk_dbg * delta_t + 0.5 * C_k * math::so3::hat(imu_before[k].lin_acc - ba) * drk_dbg * delta_t * delta_t;
+                    dpk_dba += -dvk_dba * delta_t + 0.5 * C_k * delta_t * delta_t;
+                    // [dp / d delta x; dC / d delta x], x = (pos, rot, vel, b_a, b_g)
+                    Eigen::Matrix<double, 6, 15> jacobian = Eigen::Matrix<double, 6, 15>::Zero();
+                    // dp / d delta x 
+                    jacobian.block<3, 3>(0, 0) = C_i;
+                    jacobian.block<3, 3>(0, 3) = dpk_dri;
+                    jacobian.block<3, 3>(0, 6) = -C_i * delta_t_ik;
+                    jacobian.block<3, 3>(0, 9) = dpk_dba;
+                    jacobian.block<3, 3>(0, 12) = dpk_dbg;
+                    // dC / d delta x
+                    jacobian.block<3, 3>(3, 3) = C_ik.transpose();
+                    jacobian.block<3, 3>(3, 12) = drk_dbg;
+
+                    state.jacobian = jacobian;
+                }
+
+                integrated_states.push_back(state);
+            }
+            for (size_t k = 0; k < imu_before.size(); ++k) {
+            double delta_t = 0;
+            double pose_time = 0;
+            if (k < imu_before.size() - 1) {
+                delta_t = fabs(imu_before[k + 1].timestamp - imu_before[k].timestamp);
+                pose_time = imu_before[k + 1].timestamp;
+            } else if (k == imu_before.size() - 1) {
+                delta_t = fabs(min_point_time_ - imu_before[k].timestamp);
+                pose_time = min_point_time_;
+            }
+            assert(delta_t > 0);
+
+            delta_t_ik += delta_t;
+            const Eigen::Vector3d phi_k = -1 * (imu_before[k].ang_vel - bg) * delta_t;
+            const Eigen::Matrix3d C_k_k_plus_1 = math::so3::vec2rot(phi_k);
+
+            C_mr = C_mr * C_k_k_plus_1;
+            v_rm_in_m -= (C_mr * (imu_before[k].lin_acc - ba) + gravity_) * delta_t;
+            r_rm_in_m -= v_rm_in_m * delta_t + 0.5 * (C_mr * (imu_before[k].lin_acc - ba) + gravity_) * delta_t * delta_t;
+            const Eigen::Matrix3d C_k = C_mr;
+
+            IntegratedState state = IntegratedState(C_mr, r_rm_in_m, v_rm_in_m, pose_time);
+            if (compute_jacobians) {
+                // note: we multiply phi_k by (-1) to convert left Jacobian to right Jacobian
+                drk_dbg = C_k_k_plus_1.transpose() * drk_dbg + math::so3::vec2jac(-phi_k) * delta_t;
+                C_ik = C_ik * C_k_k_plus_1;
+                dvk_dri += C_k * math::so3::hat(imu_before[k].lin_acc - ba) * C_ik.transpose() * delta_t;
+                dvk_dbg += C_k * math::so3::hat(imu_before[k].lin_acc - ba) * drk_dbg * delta_t;
+                dvk_dba += C_k * delta_t;
+                dpk_dri += -dvk_dri * delta_t + 0.5 * C_k * math::so3::hat(imu_before[k].lin_acc - ba) * C_ik.transpose() * delta_t * delta_t;
+                dpk_dbg += -dvk_dbg * delta_t + 0.5 * C_k * math::so3::hat(imu_before[k].lin_acc - ba) * drk_dbg * delta_t * delta_t;
+                dpk_dba += -dvk_dba * delta_t + 0.5 * C_k * delta_t * delta_t;
+                // [dp / d delta x; dC / d delta x], x = (pos, rot, vel, b_a, b_g)
+                Eigen::Matrix<double, 6, 15> jacobian = Eigen::Matrix<double, 6, 15>::Zero();
+                // dp / d delta x 
+                jacobian.block<3, 3>(0, 0) = C_i;
+                jacobian.block<3, 3>(0, 3) = dpk_dri;
+                jacobian.block<3, 3>(0, 6) = -C_i * delta_t_ik;
+                jacobian.block<3, 3>(0, 9) = dpk_dba;
+                jacobian.block<3, 3>(0, 12) = dpk_dbg;
+                // dC / d delta x
+                jacobian.block<3, 3>(3, 3) = C_ik.transpose();
+                jacobian.block<3, 3>(3, 12) = drk_dbg;
+
+                state.jacobian = jacobian;
+            }
+            integrated_states.push_back(state);
+            }
+        }
+
+        // after:
+        if (imu_after.size() > 0) {
+            Eigen::Matrix3d C_mr = C_i;
+            Eigen::Vector3d r_rm_in_m = p_i;
+            Eigen::Vector3d v_rm_in_m = v_i;
+            Eigen::Matrix3d C_ik = Eigen::Matrix3d::Identity();
+            // Jacobians
+            Eigen::Matrix3d drk_dbg = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dvk_dri = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dvk_dbg = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dvk_dba = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dpk_dri = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dpk_dbg = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d dpk_dba = Eigen::Matrix3d::Zero();
+            double delta_t_ik = 0;
+            double delta_t = imu_after[0].timestamp - curr_time_;
+            if (delta_t > 1.0e-6) {
+            uint k = 0;
+            delta_t_ik += delta_t;
+            const Eigen::Vector3d phi_k = (imu_after[k].ang_vel - bg) * delta_t;
+            const Eigen::Matrix3d C_k = C_mr;
+            const Eigen::Matrix3d C_k_k_plus_1 = math::so3::vec2rot(phi_k);
+
+            r_rm_in_m += v_rm_in_m * delta_t + 0.5 * (C_mr * (imu_after[k].lin_acc - ba) + gravity_) * delta_t * delta_t;
+            v_rm_in_m += (C_mr * (imu_after[k].lin_acc - ba) + gravity_) * delta_t;
+            C_mr = C_mr * C_k_k_plus_1;
+
+            IntegratedState state = IntegratedState(C_mr, r_rm_in_m, v_rm_in_m, imu_after[k].timestamp);
+            if (compute_jacobians) {
+                dpk_dri += dvk_dri * delta_t - 0.5 * C_k * math::so3::hat(imu_after[k].lin_acc - ba) * C_ik.transpose() * delta_t * delta_t;
+                dpk_dbg += dvk_dbg * delta_t - 0.5 * C_k * math::so3::hat(imu_after[k].lin_acc - ba) * drk_dbg * delta_t * delta_t;
+                dpk_dba += dvk_dba * delta_t - 0.5 * C_k * delta_t * delta_t;
+                dvk_dri -= C_k * math::so3::hat(imu_after[k].lin_acc - ba) * C_ik.transpose() * delta_t;
+                dvk_dbg -= C_k * math::so3::hat(imu_after[k].lin_acc - ba) * drk_dbg * delta_t;
+                dvk_dba -= C_k * delta_t;
+                // note: we multiply phi_k by (-1) to convert left Jacobian to right Jacobian
+                drk_dbg = C_k_k_plus_1.transpose() * drk_dbg - math::so3::vec2jac(-phi_k) * delta_t;
+                // [dp / d delta x; dC / d delta x], x = (pos, rot, vel, b_a, b_g)
+                Eigen::Matrix<double, 6, 15> jacobian = Eigen::Matrix<double, 6, 15>::Zero();
+                // dp / d delta x 
+                jacobian.block<3, 3>(0, 0) = C_i;
+                jacobian.block<3, 3>(0, 3) = dpk_dri;
+                jacobian.block<3, 3>(0, 6) = C_i * delta_t_ik;
+                jacobian.block<3, 3>(0, 9) = dpk_dba;
+                jacobian.block<3, 3>(0, 12) = dpk_dbg;
+                // dC / d delta x
+                C_ik = C_ik * C_k_k_plus_1;
+                jacobian.block<3, 3>(3, 3) = C_ik.transpose();
+                jacobian.block<3, 3>(3, 12) = drk_dbg;
+                state.jacobian = jacobian;
+            }
+            integrated_states.push_back(state);
+            }
+            for (size_t k = 0; k < imu_after.size(); ++k) {
+                double delta_t = 0;
+                double pose_time = 0;
+                if (k < imu_after.size() - 1) {
+                    delta_t = imu_after[k + 1].timestamp - imu_after[k].timestamp;
+                    pose_time = imu_after[k + 1].timestamp;
+                } else if (k == imu_after.size() - 1) {
+                    delta_t = max_point_time_ - imu_after[k].timestamp;
+                    pose_time = max_point_time_;
+                }
+                assert(delta_t > 0);
+
+                delta_t_ik += delta_t;
+                const Eigen::Vector3d phi_k = (imu_after[k].ang_vel - bg) * delta_t;
+                const Eigen::Matrix3d C_k = C_mr;
+                const Eigen::Matrix3d C_k_k_plus_1 = math::so3::vec2rot(phi_k);
+
+                r_rm_in_m += v_rm_in_m * delta_t + 0.5 * (C_mr * (imu_after[k].lin_acc - ba) + gravity_) * delta_t * delta_t;
+                v_rm_in_m += (C_mr * (imu_after[k].lin_acc - ba) + gravity_) * delta_t;
+                C_mr = C_mr * C_k_k_plus_1;
+
+                IntegratedState state = IntegratedState(C_mr, r_rm_in_m, v_rm_in_m, pose_time);
+                if (compute_jacobians) {
+                    dpk_dri += dvk_dri * delta_t - 0.5 * C_k * math::so3::hat(imu_after[k].lin_acc - ba) * C_ik.transpose() * delta_t * delta_t;
+                    dpk_dbg += dvk_dbg * delta_t - 0.5 * C_k * math::so3::hat(imu_after[k].lin_acc - ba) * drk_dbg * delta_t * delta_t;
+                    dpk_dba += dvk_dba * delta_t - 0.5 * C_k * delta_t * delta_t;
+                    dvk_dri -= C_k * math::so3::hat(imu_after[k].lin_acc - ba) * C_ik.transpose() * delta_t;
+                    dvk_dbg -= C_k * math::so3::hat(imu_after[k].lin_acc - ba) * drk_dbg * delta_t;
+                    dvk_dba -= C_k * delta_t;
+                    // note: we multiply phi_k by (-1) to convert left Jacobian to right Jacobian
+                    drk_dbg = C_k_k_plus_1.transpose() * drk_dbg - math::so3::vec2jac(-phi_k) * delta_t;
+                    // [dp / d delta x; dC / d delta x], x = (pos, rot, vel, b_a, b_g)
+                    Eigen::Matrix<double, 6, 15> jacobian = Eigen::Matrix<double, 6, 15>::Zero();
+                    // dp / d delta x 
+                    jacobian.block<3, 3>(0, 0) = C_i;
+                    jacobian.block<3, 3>(0, 3) = dpk_dri;
+                    jacobian.block<3, 3>(0, 6) = C_i * delta_t_ik;
+                    jacobian.block<3, 3>(0, 9) = dpk_dba;
+                    jacobian.block<3, 3>(0, 12) = dpk_dbg;
+                    // dC / d delta x
+                    C_ik = C_ik * C_k_k_plus_1;
+                    jacobian.block<3, 3>(3, 3) = C_ik.transpose();
+                    jacobian.block<3, 3>(3, 12) = drk_dbg;
+                    state.jacobian = jacobian;
+                }
+                integrated_states.push_back(state);
+            }
+        }
+            std::sort(integrated_states.begin(), integrated_states.end(), [](auto &left, auto &right) {
+            return left.timestamp < right.timestamp;
+        });
+
+        return integrated_states;
+    }
+
+    void P2PGlobalSuperCostTerm::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
+        // Initialize accumulators for exceptions
+        std::atomic<size_t> exception_count{0};
+
+        // Retrieve knot states
+        using namespace se3;
+        using namespace vspace;
+        const auto T_ = transform_r_to_m_->forward();
+        const auto v_ = v_m_to_r_in_m_->forward();
+        const auto b_ = bias_->forward();
+
+        // Compute states and pose times
+        const double rinv = 1.0 / options_.r_p2p;
+        const double sqrt_rinv = sqrt(rinv);
+        const std::vector<IntegratedState> states = integrate_(true);
+        std::vector<double> pose_times;
+        for (const IntegratedState &state : states) {
+            pose_times.push_back(state.timestamp);
+        }
+
+        // Thread-local accumulators for A and c
+        using Matrix15x15 = Eigen::Matrix<double, 15, 15>;
+        using Vector15 = Eigen::Matrix<double, 15, 1>;
+        tbb::combinable<Matrix15x15> local_A([]() { return Matrix15x15::Zero(); });
+        tbb::combinable<Vector15> local_c([]() { return Vector15::Zero(); });
+
+        // Process measurement times: sequential for small sizes, parallel for large
+        if (meas_times_.size() < 100) { // Tune threshold via profiling
+            Matrix15x15 A = Matrix15x15::Zero();
+            Vector15 c = Vector15::Zero();
+            for (int i = 0; i < (int)meas_times_.size(); ++i) {
+                try {
+                    const double &ts = meas_times_[i];
+                    const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
+
+                    // Interpolation
+                    int start_index = 0, end_index = 0;
+                    for (size_t k = 0; k < pose_times.size(); ++k) {
+                        if (pose_times[k] > ts) {
+                            end_index = k;
+                            break;
+                        }
+                        start_index = k;
+                        end_index = k;
+                    }
+                    Eigen::Matrix3d C_mr = states[0].C_mr;
+                    Eigen::Vector3d r_rm_in_m = states[0].r_rm_in_m;
+                    double alpha = 0;
+                    if ((ts == pose_times[start_index]) || (start_index == end_index) || 
+                        (pose_times[start_index] == pose_times[end_index])) {
+                        alpha = 0;
+                    } else if (ts == pose_times[end_index]) {
+                        alpha = 1;
+                    } else {
+                        alpha = (ts - pose_times[start_index]) / (pose_times[end_index] - pose_times[start_index]);
+                    }
+                    r_rm_in_m = alpha * states[end_index].r_rm_in_m + (1 - alpha) * states[start_index].r_rm_in_m;
+                    const Eigen::Vector3d phi = math::so3::rot2vec(states[start_index].C_mr.transpose() * states[end_index].C_mr);
+                    C_mr = states[start_index].C_mr * math::so3::vec2rot(alpha * phi);
+
+                    // Interpolation Jacobians
+                    const Eigen::Matrix3d dr_dr1 = Eigen::Matrix3d::Identity() * (1 - alpha);
+                    const Eigen::Matrix3d dr_dr2 = Eigen::Matrix3d::Identity() * alpha;
+                    const Eigen::Matrix3d a_jac = alpha * math::so3::vec2jac(-alpha * phi) * 
+                                                math::so3::vec2jacinv(-phi);
+                    const Eigen::Matrix3d dc_dc1 = Eigen::Matrix3d::Identity() - a_jac;
+                    const Eigen::Matrix3d dc_dc2 = a_jac;
+
+                    // Measurement Jacobians
+                    Eigen::Matrix<double, 1, 3> de_dr = Eigen::Matrix<double, 1, 3>::Zero();
+                    Eigen::Matrix<double, 1, 3> de_dc = Eigen::Matrix<double, 1, 3>::Zero();
+                    double error = 0.0;
+
+                    for (const int &match_idx : bin_indices) {
+                        const auto &p2p_match = p2p_matches_.at(match_idx);
+                        const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - C_mr * p2p_match.query - r_rm_in_m);
+                        const double sqrt_w = sqrt(p2p_loss_func_->weight(fabs(raw_error)));
+                        error += sqrt_w * sqrt_rinv * raw_error;
+                        de_dr -= sqrt_w * sqrt_rinv * p2p_match.normal.transpose();
+                        de_dc += sqrt_w * sqrt_rinv * p2p_match.normal.transpose() * C_mr * math::so3::hat(p2p_match.query);
+                    }
+
+                    // Get Jacobians of the bracketing states with respect to perturbations
+                    const Eigen::Matrix<double, 3, 15> &dr1_dx = states[start_index].jacobian.block<3, 15>(0, 0);
+                    const Eigen::Matrix<double, 3, 15> &dc1_dx = states[start_index].jacobian.block<3, 15>(3, 0);
+                    const Eigen::Matrix<double, 3, 15> &dr2_dx = states[end_index].jacobian.block<3, 15>(0, 0);
+                    const Eigen::Matrix<double, 3, 15> &dc2_dx = states[end_index].jacobian.block<3, 15>(3, 0);
+                    const Eigen::Matrix<double, 1, 15> G = de_dr * (dr_dr1 * dr1_dx + dr_dr2 * dr2_dx) + de_dc * (dc_dc1 * dc1_dx + dc_dc2 * dc2_dx);
+
+                    A += G.transpose() * G;
+                    c -= G.transpose() * error;
+                } catch (const std::exception& e) {
+                    ++exception_count;
+                    std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
+                } catch (...) {
+                    ++exception_count;
+                    std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
+                }
+            }
+            local_A.local() = A;
+            local_c.local() = c;
+        } else {
+            tbb::parallel_for(tbb::blocked_range<size_t>(0, meas_times_.size(), 100),
+                [&states, &pose_times, &sqrt_rinv, &local_A, &local_c, &exception_count, this](
+                    const tbb::blocked_range<size_t>& range) {
+                    auto& A = local_A.local();
+                    auto& c = local_c.local();
+                    for (size_t i = range.begin(); i != range.end(); ++i) {
+                        try {
+                            const double &ts = meas_times_[i];
+                            const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
+
+                            // Interpolation
+                            int start_index = 0, end_index = 0;
+                            for (size_t k = 0; k < pose_times.size(); ++k) {
+                                if (pose_times[k] > ts) {
+                                    end_index = k;
+                                    break;
+                                }
+                                start_index = k;
+                                end_index = k;
+                            }
+                            Eigen::Matrix3d C_mr = states[0].C_mr;
+                            Eigen::Vector3d r_rm_in_m = states[0].r_rm_in_m;
+                            double alpha = 0;
+                            if ((ts == pose_times[start_index]) || (start_index == end_index) || 
+                                (pose_times[start_index] == pose_times[end_index])) {
+                                alpha = 0;
+                            } else if (ts == pose_times[end_index]) {
+                                alpha = 1;
+                            } else {
+                                alpha = (ts - pose_times[start_index]) / (pose_times[end_index] - pose_times[start_index]);
+                            }
+                            r_rm_in_m = alpha * states[end_index].r_rm_in_m + (1 - alpha) * states[start_index].r_rm_in_m;
+                            const Eigen::Vector3d phi = math::so3::rot2vec(states[start_index].C_mr.transpose() * states[end_index].C_mr);
+                            C_mr = states[start_index].C_mr * math::so3::vec2rot(alpha * phi);
+
+                            // Interpolation Jacobians
+                            const Eigen::Matrix3d dr_dr1 = Eigen::Matrix3d::Identity() * (1 - alpha);
+                            const Eigen::Matrix3d dr_dr2 = Eigen::Matrix3d::Identity() * alpha;
+                            const Eigen::Matrix3d a_jac = alpha * math::so3::vec2jac(-alpha * phi) * math::so3::vec2jacinv(-phi);
+                            const Eigen::Matrix3d dc_dc1 = Eigen::Matrix3d::Identity() - a_jac;
+                            const Eigen::Matrix3d dc_dc2 = a_jac;
+
+                            // Measurement Jacobians
+                            Eigen::Matrix<double, 1, 3> de_dr = Eigen::Matrix<double, 1, 3>::Zero();
+                            Eigen::Matrix<double, 1, 3> de_dc = Eigen::Matrix<double, 1, 3>::Zero();
+                            double error = 0.0;
+
+                            for (const int &match_idx : bin_indices) {
+                                const auto &p2p_match = p2p_matches_.at(match_idx);
+                                const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - C_mr * p2p_match.query - r_rm_in_m);
+                                const double sqrt_w = sqrt(p2p_loss_func_->weight(fabs(raw_error)));
+                                error += sqrt_w * sqrt_rinv * raw_error;
+                                de_dr -= sqrt_w * sqrt_rinv * p2p_match.normal.transpose();
+                                de_dc += sqrt_w * sqrt_rinv * p2p_match.normal.transpose() * C_mr * math::so3::hat(p2p_match.query);
+                            }
+
+                            // Get Jacobians of the bracketing states with respect to perturbations
+                            const Eigen::Matrix<double, 3, 15> &dr1_dx = states[start_index].jacobian.block<3, 15>(0, 0);
+                            const Eigen::Matrix<double, 3, 15> &dc1_dx = states[start_index].jacobian.block<3, 15>(3, 0);
+                            const Eigen::Matrix<double, 3, 15> &dr2_dx = states[end_index].jacobian.block<3, 15>(0, 0);
+                            const Eigen::Matrix<double, 3, 15> &dc2_dx = states[end_index].jacobian.block<3, 15>(3, 0);
+                            const Eigen::Matrix<double, 1, 15> G = de_dr * (dr_dr1 * dr1_dx + dr_dr2 * dr2_dx) + de_dc * (dc_dc1 * dc1_dx + dc_dc2 * dc2_dx);
+
+                            A += G.transpose() * G;
+                            c -= G.transpose() * error;
+                        } catch (const std::exception& e) {
+                            ++exception_count;
+                            std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] STEAM exception at index " << i << ", timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
+                        } catch (...) {
+                            ++exception_count;
+                            std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] STEAM exception at index " << i << ", timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
+                        }
+                    }
+                });
+        }
+
+        // Combine thread-local A and c
+        Matrix15x15 A = local_A.combine([](const Matrix15x15& a, const Matrix15x15& b) { return a + b; });
+        Vector15 c = local_c.combine([](const Vector15& a, const Vector15& b) { return a + b; });
+
+        // Determine active variables and extract keys
+        std::vector<bool> active;
+        active.push_back(transform_r_to_m_->active());
+        active.push_back(v_m_to_r_in_m_->active());
+        active.push_back(bias_->active());
+
+        std::vector<StateKey> keys;
+        if (active[0]) {
+            const auto Tnode = std::static_pointer_cast<Node<PoseType>>(T_);
+            Jacobians jacs;
+            Eigen::Matrix<double, 1, 1> lhs = Eigen::Matrix<double, 1, 1>::Zero();
+            transform_r_to_m_->backward(lhs, Tnode, jacs);
+            const auto jacmap = jacs.get();
+            assert(jacmap.size() == 1);
+            for (auto it = jacmap.begin(); it != jacmap.end(); it++) {
+                keys.push_back(it->first);
+            }
+        } else {
+            keys.push_back(-1);
+        }
+        if (active[1]) {
+            const auto vnode = std::static_pointer_cast<Node<VelType>>(v_);
+            Jacobians jacs;
+            Eigen::Matrix<double, 1, 1> lhs = Eigen::Matrix<double, 1, 1>::Zero();
+            v_m_to_r_in_m_->backward(lhs, vnode, jacs);
+            const auto jacmap = jacs.get();
+            assert(jacmap.size() == 1);
+            for (auto it = jacmap.begin(); it != jacmap.end(); it++) {
+                keys.push_back(it->first);
+            }
+        } else {
+            keys.push_back(-1);
+        }
+        if (active[2]) {
+            const auto bnode = std::static_pointer_cast<Node<BiasType>>(b_);
+            Jacobians jacs;
+            Eigen::Matrix<double, 1, 1> lhs = Eigen::Matrix<double, 1, 1>::Zero();
+            bias_->backward(lhs, bnode, jacs);
+            const auto jacmap = jacs.get();
+            assert(jacmap.size() == 1);
+            for (auto it = jacmap.begin(); it != jacmap.end(); it++) {
+                keys.push_back(it->first);
+            }
+        } else {
+            keys.push_back(-1);
+        }
+
+        // Update global Hessian and gradient for active variables
+        tbb::spin_mutex hessian_mutex, grad_mutex;
+        std::vector<int> blk_indices = {0, 6, 9};
+        std::vector<int> blk_sizes = {6, 3, 6};
+        for (size_t i = 0; i < 3; ++i) {
+            if (!active[i]) continue;
+            const auto& key1 = keys[i];
+            unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
+
+            // Update gradient
+            const Eigen::MatrixXd newGradTerm = [&]() -> Eigen::MatrixXd {
+                if (blk_sizes[i] == 3) {
+                    return c.block<3, 1>(blk_indices[i], 0);
+                } else {
+                    return c.block<6, 1>(blk_indices[i], 0);
+                }
+            }();
+            
+            tbb::spin_mutex::scoped_lock grad_lock(grad_mutex);
+            gradient_vector->mapAt(blkIdx1) += newGradTerm;
+
+            // Update Hessian (upper triangle)
+            for (size_t j = i; j < 3; ++j) {
+                if (!active[j]) continue;
+                const auto& key2 = keys[j];
+                unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
+
+                unsigned int row, col;
+                const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
+                    if (blkIdx1 <= blkIdx2) {
+                        row = blkIdx1;
+                        col = blkIdx2;
+                        if (blk_sizes[i] == 3 && blk_sizes[j] == 3) {
+                            return A.block<3, 3>(blk_indices[i], blk_indices[j]);
+                        } else if (blk_sizes[i] == 3 && blk_sizes[j] == 6) {
+                            return A.block<3, 6>(blk_indices[i], blk_indices[j]);
+                        } else if (blk_sizes[i] == 6 && blk_sizes[j] == 3) {
+                            return A.block<6, 3>(blk_indices[i], blk_indices[j]);
+                        } else {
+                            return A.block<6, 6>(blk_indices[i], blk_indices[j]);
+                        }
+                    } else {
+                        row = blkIdx2;
+                        col = blkIdx1;
+                        if (blk_sizes[i] == 3 && blk_sizes[j] == 3) {
+                            return A.block<3, 3>(blk_indices[j], blk_indices[i]).transpose();
+                        } else if (blk_sizes[i] == 3 && blk_sizes[j] == 6) {
+                            return A.block<6, 3>(blk_indices[j], blk_indices[i]).transpose();
+                        } else if (blk_sizes[i] == 6 && blk_sizes[j] == 3) {
+                            return A.block<3, 6>(blk_indices[j], blk_indices[i]).transpose();
+                        } else {
+                            return A.block<6, 6>(blk_indices[j], blk_indices[i]).transpose();
+                        }
+                    }
+                }();
+
+                // Update Hessian with mutex protection
+                tbb::spin_mutex::scoped_lock hessian_lock(hessian_mutex);
+                BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
+                entry.data += newHessianTerm;
+            }
+        }
+
+        // Log exceptions
+        if (exception_count > 0) {
+            std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] Warning: " << exception_count << " exceptions occurred!" << std::endl;
+        }
+    }
+
 }  // namespace finalicp

@@ -75,7 +75,6 @@ namespace finalicp{
 
                     //thread safe map
                     std::map<unsigned int, BlockRowEntry> rows;
-                    mutable tbb::spin_mutex mutex;
             };
 
             //Column-wise storage of sparse blocks.

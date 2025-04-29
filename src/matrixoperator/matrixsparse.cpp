@@ -96,7 +96,6 @@ namespace finalicp{
         }
 
         // Access column
-        tbb::spin_mutex::scoped_lock lock(cols_[c].mutex);
         BlockSparseColumn& colRef = cols_[c];
         // Try to find or insert row entry
         auto& rowMap = colRef.rows;

@@ -503,7 +503,7 @@ namespace finalicp {
         }
 
         // Update global Hessian and gradient for active variables
-        static tbb::spin_mutex hessian_mutex;
+        tbb::spin_mutex hessian_mutex,grad_mutex;
         for (size_t i = 0; i < 6; ++i) {
             if (!active[i]) continue;
             const auto& key1 = keys[i];
@@ -511,7 +511,6 @@ namespace finalicp {
 
             // Update gradient
             Eigen::MatrixXd newGradTerm = b.block<6, 1>(i * 6, 0);
-            static tbb::spin_mutex grad_mutex;
             tbb::spin_mutex::scoped_lock grad_lock(grad_mutex);
             gradient_vector->mapAt(blkIdx1) += newGradTerm;
 
@@ -543,8 +542,7 @@ namespace finalicp {
 
         // Log exceptions
         if (exception_count > 0) {
-            std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] Warning: " << exception_count
-                    << " exceptions occurred!" << std::endl;
+            std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] Warning: " << exception_count << " exceptions occurred!" << std::endl;
         }
     }
 
