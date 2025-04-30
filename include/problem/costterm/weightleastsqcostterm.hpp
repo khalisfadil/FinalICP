@@ -13,6 +13,8 @@
 #include <tbb/blocked_range.h>
 #include <tbb/spin_mutex.h>
 
+#include <iostream>
+
 namespace finalicp {
     template <int DIM>
     class WeightedLeastSqCostTerm : public BaseCostTerm {
@@ -92,6 +94,7 @@ namespace finalicp {
         std::atomic<size_t> exception_count{0};
 
         // Parallelize outer loop over Jacobians
+        tbb::spin_mutex hessian_mutex, grad_mutex;
         tbb::parallel_for(tbb::blocked_range<size_t>(0, keys.size(), 1),
             [&](const tbb::blocked_range<size_t>& range) {
                 for (size_t i = range.begin(); i != range.end(); ++i) {
@@ -106,7 +109,7 @@ namespace finalicp {
 
                         // Update gradient (thread-safe with mutex)
                         static tbb::spin_mutex grad_mutex;
-                        tbb::spin_mutex::scoped_lock lock(grad_mutex);
+                        tbb::spin_mutex::scoped_lock grad_lock(grad_mutex);
                         gradient_vector->mapAt(blkIdx1) += newGradTerm;
 
                         // Inner loop for Hessian (upper triangle)
@@ -130,10 +133,12 @@ namespace finalicp {
                             }();
 
                             // Update Hessian (thread-safe with BlockRowEntry lock)
-                            BlockSparseMatrix::BlockRowEntry& entry =
-                                approximate_hessian->rowEntryAt(row, col, true);
-                            tbb::spin_mutex::scoped_lock entry_lock(entry.lock);
+                            tbb::spin_mutex::scoped_lock hessian_lock(hessian_mutex);
+                            BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
                             entry.data += newHessianTerm;
+                            // BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
+                            // tbb::spin_mutex::scoped_lock entry_lock(entry.lock);
+                            // entry.data += newHessianTerm;
                         }
                     } catch (const std::exception& e) {
                         ++exception_count;

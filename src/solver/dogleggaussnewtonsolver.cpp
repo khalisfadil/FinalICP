@@ -125,8 +125,8 @@ namespace finalicp {
         // Print report line if verbose option enabled
         if (params_.verbose) {
             if (curr_iteration_ == 1) {
-            // clang-format off
-            std::cout << std::right << std::setw( 4) << std::setfill(' ') << "iter"
+                // clang-format off
+                std::cout << std::right << std::setw(4) << std::setfill(' ') << "iter"
                         << std::right << std::setw(12) << std::setfill(' ') << "cost"
                         << std::right << std::setw(12) << std::setfill(' ') << "build (ms)"
                         << std::right << std::setw(12) << std::setfill(' ') << "solve (ms)"
@@ -136,20 +136,17 @@ namespace finalicp {
                         << std::right << std::setw(11) << std::setfill(' ') << "AvP Ratio"
                         << std::right << std::setw(16) << std::setfill(' ') << "dogleg segment"
                         << std::endl;
-            // clang-format on
+                // clang-format on
             }
             // clang-format off
-            std::cout << std::right << std::setw( 4) << std::setfill(' ') << curr_iteration_
+            std::cout << std::right << std::setw(4) << std::setfill(' ') << curr_iteration_
                     << std::right << std::setw(12) << std::setfill(' ') << std::setprecision(5) << cost
                     << std::right << std::setw(12) << std::setfill(' ') << std::setprecision(3) << std::fixed << build_time << std::resetiosflags(std::ios::fixed)
                     << std::right << std::setw(12) << std::setfill(' ') << std::setprecision(3) << std::fixed << solve_time << std::resetiosflags(std::ios::fixed)
                     << std::right << std::setw(13) << std::setfill(' ') << std::setprecision(3) << std::fixed << update_time << std::resetiosflags(std::ios::fixed)
                     << std::right << std::setw(11) << std::setfill(' ') << std::setprecision(3) << std::fixed << iter_timer.milliseconds() << std::resetiosflags(std::ios::fixed)
                     << std::right << std::setw(11) << std::setfill(' ') << num_tr_decreases
-                    << std::right << std::setw(11) << std::setfill(' ') << std::setprecision(3) << std::fixed << actual_to_predicted_ratio << std::resetiosflags(std::ios::fixed)
-                    << std::right << std::setw(16) << std::setfill(' ') << dogleg_segment
-                    << std::endl;
-            // clang-format on
+                    << std::endl; // Syntax error: misplaced << operator
         }
 
         // Return successfulness

@@ -36,8 +36,8 @@ namespace finalicp {
                 void backward(const Eigen::MatrixXd &lhs, const Node<OutType>::Ptr &node, Jacobians &jacs) const override;
                 
             private:
-                const Evaluable<InType>::ConstPtr w_iv_inv_;
                 const Eigen::Matrix<double, 1, 1> vel_meas_;
+                const Evaluable<InType>::ConstPtr w_iv_inv_;
                 Eigen::Matrix<double, 1, 6> D_; // pick out yaw vel
         };
 

@@ -44,7 +44,7 @@ namespace finalicp {
 
             protected:
 
-                const Variable::ConstPtr knot_;;                //First (earlier) knot in the trajectory
+                const Variable::ConstPtr knot_;                //First (earlier) knot in the trajectory
             
                 Eigen::Matrix<double, 18, 18> Phi_;
             };

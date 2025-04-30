@@ -43,7 +43,7 @@ namespace finalicp {
             protected:
 
                 const Variable::ConstPtr knot_;                 //The knot (state) to extrapolate from.
-                Eigen::Matrix<double, 18, 18> Phi_;             //Transition matrix for constant acceleration extrapolation
+                Eigen::Matrix<double, 12, 12> Phi_;             //Transition matrix for constant acceleration extrapolation
 
             };
 

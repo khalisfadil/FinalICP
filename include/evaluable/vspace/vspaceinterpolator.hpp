@@ -17,7 +17,7 @@ namespace finalicp {
 
                 using InType = Eigen::Matrix<double, DIM, 1>;
                 using OutType = Eigen::Matrix<double, DIM, 1>;
-                using Time = steam::traj::Time;
+                using Time = traj::Time;
 
                 //Factory method to create an instance.
                 static Ptr MakeShared(const Time& time,

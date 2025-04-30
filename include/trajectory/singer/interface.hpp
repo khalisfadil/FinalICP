@@ -43,10 +43,6 @@ namespace finalicp {
                     return getQ(dt, alpha_diag_, Qc_diag).inverse();
                 }
 
-                Eigen::Matrix<double, 18, 18> getQinvPublic(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
-                    return getQ(dt, alpha_diag_, Qc_diag).inverse();
-                }
-
                 Eigen::Matrix<double, 18, 18> getQPublic(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
                     return getQ(dt, alpha_diag_, Qc_diag);
                 }

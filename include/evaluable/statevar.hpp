@@ -80,7 +80,7 @@ namespace finalicp{
                     return Node<T>::MakeShared(value_);
             }
 
-            void backward(const Eigen::MatrixXd& lhs, const typename Node<T>::Ptr& node,
+            void backward(const Eigen::MatrixXd& lhs, const typename Node<T>::Ptr& /*node*/,
                             Jacobians& jacs) const override {
                 if (active()) jacs.add(key(), lhs);
             }

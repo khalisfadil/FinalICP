@@ -20,6 +20,10 @@ namespace finalicp {
     // addStateVariable
     // -----------------------------------------------------------------------------
 
+    void SlidingWindowFilter::addStateVariable(const StateVarBase::Ptr &variable) {
+        addStateVariable(std::vector<StateVarBase::Ptr>{variable});
+    }
+
     void SlidingWindowFilter::addStateVariable(const std::vector<StateVarBase::Ptr>& variables) {
         for (const auto& var : variables) {
             const auto key = var->key();
@@ -270,13 +274,14 @@ namespace finalicp {
         for (const auto &key : variable_queue_) {
             const auto &var = variables_.at(key);
             if (var.marginalize) {
-                if (!marginalize)
+                if (!marginalize) {
                     throw std::runtime_error("[SlidingWindowFilter::getStateVector] marginalized variables must be at the first");
-                    marginalize_state_vector_->addStateVariable(var.variable);
-                } else {
-                    marginalize = false;
-                    active_state_vector_->addStateVariable(var.variable);
                 }
+                marginalize_state_vector_->addStateVariable(var.variable);
+            } else {
+                marginalize = false;
+                active_state_vector_->addStateVariable(var.variable);
+            }
             state_vector_->addStateVariable(var.variable);
         }
 

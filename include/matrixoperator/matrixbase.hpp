@@ -39,9 +39,10 @@ namespace finalicp{
             virtual Eigen::MatrixXd copyAt(unsigned int r, unsigned int c) const = 0;
 
         private:
+        
+            BlockMatrixIndexing indexing_;  //Manages block-wise indexing.
 
             bool symmetric_;                //True if the matrix is symmetric at the scalar level.
-            BlockMatrixIndexing indexing_;  //Manages block-wise indexing.
 
     };
 } // finalicp

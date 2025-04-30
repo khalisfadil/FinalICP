@@ -39,9 +39,9 @@ namespace finalicp {
                 void backward(const Eigen::MatrixXd &lhs, const Node<OutType>::Ptr &node, Jacobians &jacs) const override;
                 
             private:
+                const double yaw_meas_;
                 const Evaluable<PoseInType>::ConstPtr T_ms_prev_;
                 const Evaluable<PoseInType>::ConstPtr T_ms_curr_;
-                const double yaw_meas_;
                 Eigen::Matrix<double, 1, 3> d_;
         };
 

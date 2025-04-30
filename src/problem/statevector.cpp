@@ -1,5 +1,3 @@
-#pragma once
-
 #include <problem/statevector.hpp>
 
 #include <iostream>

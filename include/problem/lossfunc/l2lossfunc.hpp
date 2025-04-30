@@ -22,7 +22,7 @@ namespace finalicp {
             }
 
             //Computes the weight for iteratively reweighted least squares (IRLS).
-            double weight(double whitened_error_norm) const override { return 1.0; }
+            double weight(double /*whitened_error_norm*/) const override { return 1.0; }
     };
 
 }  // namespace finalicp

@@ -1,13 +1,12 @@
 #pragma once
 
-#include <Eigen/Core>
-
 #include <liegroupmath.hpp>
 
 #include <evaluable/statevar.hpp>
 
 namespace finalicp {
     namespace vspace {
+
         template <int DIM = Eigen::Dynamic>
         class VSpaceStateVar : public StateVar<Eigen::Matrix<double, DIM, 1>> {
             public:
@@ -26,16 +25,8 @@ namespace finalicp {
                 //Updates the velocity state using a perturbation.
                 bool update(const Eigen::VectorXd& perturbation) override;
 
-                using KeySet = typename Evaluable<OutType>::KeySet;
-
                 //Collects state variable keys that influence this evaluator.
                 StateVarBase::Ptr clone() const override;
-
-            private:
-                const typename Evaluable<InType>::ConstPtr bias1_;          //First bias state.
-                const typename Evaluable<InType>::ConstPtr bias2_;          //Second bias state.
-                double psi_;    ///< Interpolation weight for `bias2`.
-                double lambda_; ///< Interpolation weight for `bias1`.
         };
 
         template <int DIM>

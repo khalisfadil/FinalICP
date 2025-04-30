@@ -40,7 +40,7 @@ namespace finalicp {
                 void backward(const Eigen::MatrixXd& lhs,const typename Node<OutType>::Ptr& node, Jacobians& jacs) const override;
 
             private:
-                typename Node<OutType>::Ptr forward() const override;       //Input function.
+                const typename Evaluable<InType>::ConstPtr v_;       //Input function.
             };
 
         // clang-format off
