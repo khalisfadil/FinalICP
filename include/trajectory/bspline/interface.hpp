@@ -36,8 +36,10 @@ namespace finalicp {
                 //retrieves the internal knot map
                 const KnotMap& knot_map() const { return knot_map_; }
 
-            private:
-            
+            protected:
+
+                const Time knot_spacing_;
+                
                 KnotMap knot_map_;          //Ordered map of knots
             };
 

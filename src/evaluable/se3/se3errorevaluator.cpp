@@ -1,7 +1,7 @@
 #include <evaluable/se3/se3errorevaluator.hpp>
 
 namespace finalicp {
-    namespace  {
+    namespace  se3 {
         auto SE3ErrorEvaluator::MakeShared(const Evaluable<InType>::ConstPtr &T_ab,
                                    const InType &T_ab_meas) -> Ptr {
             return std::make_shared<SE3ErrorEvaluator>(T_ab, T_ab_meas);

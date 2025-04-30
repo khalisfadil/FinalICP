@@ -8,7 +8,7 @@
 
 
 namespace finalicp {
-    namespace  {
+    namespace  se3 {
         class SE3ErrorEvaluator : public Evaluable<Eigen::Matrix<double, 6, 1>> {
             public:
                 using Ptr = std::shared_ptr<SE3ErrorEvaluator>;
@@ -45,7 +45,6 @@ namespace finalicp {
         };
 
         // clang-format off
-        SE3ErrorEvaluator::Ptr se3_error(const Evaluable<SE3ErrorEvaluator::InType>::ConstPtr& T_ab,
-                                            const SE3ErrorEvaluator::InType& T_ab_meas);
+        SE3ErrorEvaluator::Ptr se3_error(const Evaluable<SE3ErrorEvaluator::InType>::ConstPtr& T_ab, const SE3ErrorEvaluator::InType& T_ab_meas);
     }  // namespace se3
 }  // namespace finalicp
