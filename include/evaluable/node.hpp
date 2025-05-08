@@ -16,12 +16,18 @@ namespace finalicp{
 
             //Adds a child node (order of addition is preserved)
             void addChild(const Ptr& child) { 
-                std::cout << "Adding child to NodeBase: " << this << ", child: " << child.get() << ", use_count: " << child.use_count() << std::endl;
+                //debug
+                // ################################
+                std::cout << "[DEBUG::node] Adding child to NodeBase: " << this << ", child: " << child.get() << ", use_count: " << child.use_count() << std::endl;
+                 // ################################
                 children_.emplace_back(child); }
 
             //Returns child at index
             Ptr at(const size_t& index) const { 
-                std::cout << "Accessing child at index: " << index << " from NodeBase: " << this << std::endl;
+                //debug
+                // ################################
+                std::cout << "[DEBUG::node] Accessing child at index: " << index << " from NodeBase: " << this << std::endl;
+                 // ################################
                 return children_.at(index); }
 
         private:
@@ -36,13 +42,20 @@ namespace finalicp{
             using ConstPtr = std::shared_ptr<const Node<T>>;
 
             static Ptr MakeShared(const T& value) {
-                std::cout << "Creating Node<" << typeid(T).name() << "> with value" << std::endl;
+                // Debug
+                // ###################
+                // std::cout << "[DEBUG::node] Creating Node<" << typeid(T).name() << "> with value" << std::endl;
+                // ###################
+
                 return std::make_shared<Node<T>>(value);
             }
 
-            Node(const T& value) : value_(value) {std::cout << "Constructing Node<" << typeid(T).name() << ">: " << this << std::endl;}
-
-            ~Node() {std::cout << "Destroying Node<" << typeid(T).name() << ">: " << this << std::endl;}
+            Node(const T& value) : value_(value) {
+                // Debug
+                // ###################
+                // std::cout << "[DEBUG::node] Constructing Node<" << typeid(T).name() << ">: " << this << std::endl;
+                // ###################
+            }
 
             const T& value() const { return value_; }
 

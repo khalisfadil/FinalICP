@@ -83,9 +83,9 @@ namespace finalicp {
 
         // Debug: Print number of keys and their values
         // ################################
-        std::cout << "[DEBUG] Number of Jacobian keys: " << keys.size() << std::endl;
+        std::cout << "[DEBUG::WeightedLeastSqCostTerm] Number of Jacobian keys: " << keys.size() << std::endl;
         for (const auto& key : keys) {
-            std::cout << "[DEBUG] Processing key: " << key << std::endl;
+            std::cout << "[DEBUG::WeightedLeastSqCostTerm] Processing key: " << key << std::endl;
         }
         // ################################
 
@@ -98,7 +98,7 @@ namespace finalicp {
 
                 // Debug: Print key, Jacobian size, and block index
                 // ################################
-                std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", Jacobian rows=" << jac1.rows() << ", cols=" << jac1.cols() << ", blkIdx1=" << blkIdx1 << std::endl;
+                std::cout << "[DEBUG::WeightedLeastSqCostTerm] i=" << i << ", key1=" << key1 << ", Jacobian rows=" << jac1.rows() << ", cols=" << jac1.cols() << ", blkIdx1=" << blkIdx1 << std::endl;
                 // ################################
 
                 // Compute gradient contribution
@@ -106,7 +106,7 @@ namespace finalicp {
 
                 // Debug: Print gradient term size and norm
                 // ################################
-                 std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
+                 std::cout << "[DEBUG::WeightedLeastSqCostTerm] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
                 // ################################
 
                 // Update gradient 
@@ -120,7 +120,7 @@ namespace finalicp {
 
                     // Debug: Print inner loop key and block index
                     // ################################
-                    std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
+                    std::cout << "[DEBUG::WeightedLeastSqCostTerm] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
                     // ################################
 
                     // Compute Hessian contribution
@@ -139,7 +139,7 @@ namespace finalicp {
 
                     // Debug: Print Hessian term size and norm
                     // ################################
-                    std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
+                    std::cout << "[DEBUG::WeightedLeastSqCostTerm] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
                     // ################################
 
                     BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
@@ -162,7 +162,7 @@ namespace finalicp {
 
         // Debug: Print Hessian term size and norm
         // ################################
-        std::cout << "[DEBUG] Cleared Jacobian container" << std::endl;
+        std::cout << "[DEBUG::WeightedLeastSqCostTerm] Cleared Jacobian container" << std::endl;
         // ################################
 
         // Get raw error and Jacobians
@@ -170,8 +170,8 @@ namespace finalicp {
 
         // Debug: Print Hessian term size and norm
         // ################################
-        std::cout << "[DEBUG] Raw error norm: " << raw_error.norm() << ", size: (" << raw_error.rows() << ", " << raw_error.cols() << ")" << std::endl;
-        std::cout << "[DEBUG] Number of Jacobians after evaluation: " << jacobian_container.get().size() << std::endl;
+        std::cout << "[DEBUG::WeightedLeastSqCostTerm] Raw error norm: " << raw_error.norm() << ", size: (" << raw_error.rows() << ", " << raw_error.cols() << ")" << std::endl;
+        std::cout << "[DEBUG::WeightedLeastSqCostTerm] Number of Jacobians after evaluation: " << jacobian_container.get().size() << std::endl;
         // ################################
 
         // Get whitened error vector
@@ -179,7 +179,7 @@ namespace finalicp {
 
         // Debug: Print Hessian term size and norm
         // ################################
-        std::cout << "[DEBUG] Whitened error norm: " << white_error.norm() << ", size: (" << white_error.rows() << ", " << white_error.cols() << ")" << std::endl;
+        std::cout << "[DEBUG::WeightedLeastSqCostTerm] Whitened error norm: " << white_error.norm() << ", size: (" << white_error.rows() << ", " << white_error.cols() << ")" << std::endl;
         // ################################
 
         // Get weight from loss function
@@ -187,7 +187,7 @@ namespace finalicp {
 
         // Debug: Print Hessian term size and norm
         // ################################
-        std::cout << "[DEBUG] Sqrt weight (sqrt_w): " << sqrt_w << std::endl;
+        std::cout << "[DEBUG::WeightedLeastSqCostTerm] Sqrt weight (sqrt_w): " << sqrt_w << std::endl;
         // ################################
 
         // Weight the white Jacobians
@@ -196,7 +196,7 @@ namespace finalicp {
 
             // Debug: Print Hessian term size and norm
             // ################################
-            std::cout << "[DEBUG] Weighting Jacobian for key: " << entry.first << ", original norm: " << entry.second.norm();
+            std::cout << "[DEBUG::WeightedLeastSqCostTerm] Weighting Jacobian for key: " << entry.first << ", original norm: " << entry.second.norm();
             // ################################
 
             entry.second *= sqrt_w;
@@ -212,7 +212,7 @@ namespace finalicp {
 
         // Debug: Print Hessian term size and norm
         // ################################
-        std::cout << "[DEBUG] Weighted error norm: " << weighted_error.norm() << ", size: (" << weighted_error.rows() << ", " << weighted_error.cols() << ")" << std::endl;
+        std::cout << "[DEBUG::WeightedLeastSqCostTerm] Weighted error norm: " << weighted_error.norm() << ", size: (" << weighted_error.rows() << ", " << weighted_error.cols() << ")" << std::endl;
         // ################################
 
         return weighted_error;

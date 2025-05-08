@@ -26,112 +26,53 @@ namespace finalicp {
         const double sqrt_rinv = sqrt(rinv);
 
         // Sequential processing for small meas_times_ to avoid parallel overhead
-        if (meas_times_.size() < 100) { // Tune threshold via profiling
-            double cost = 0;
-            for (unsigned int i = 0; i < meas_times_.size(); ++i) {
-                try {
-                    const double &ts = meas_times_[i];
-                    const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
+        double cost = 0;
+        for (unsigned int i = 0; i < meas_times_.size(); ++i) {
+            try {
+                const double &ts = meas_times_[i];
+                const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
 
-                    // Interpolation
-                    int start_index = 0, end_index = 0;
-                    for (size_t k = 0; k < pose_times.size(); ++k) {
-                        if (pose_times[k] > ts) {
-                            end_index = k;
-                            break;
-                        }
-                        start_index = k;
+                // Interpolation
+                int start_index = 0, end_index = 0;
+                for (size_t k = 0; k < pose_times.size(); ++k) {
+                    if (pose_times[k] > ts) {
                         end_index = k;
+                        break;
                     }
-                    Eigen::Matrix3d C_mr = states[0].C_mr;
-                    Eigen::Vector3d r_rm_in_m = states[0].r_rm_in_m;
-                    double alpha = 0;
-                    if ((ts == pose_times[start_index]) || (start_index == end_index) || (pose_times[start_index] == pose_times[end_index])) {
-                        alpha = 0;
-                    } else if (ts == pose_times[end_index]) {
-                        alpha = 1;
-                    } else {
-                        alpha = (ts - pose_times[start_index]) / (pose_times[end_index] - pose_times[start_index]);
-                    }
-                    r_rm_in_m = alpha * states[end_index].r_rm_in_m + (1 - alpha) * states[start_index].r_rm_in_m;
-                    const Eigen::Vector3d phi = math::so3::rot2vec(states[start_index].C_mr.transpose() * states[end_index].C_mr);
-                    C_mr = states[start_index].C_mr * math::so3::vec2rot(alpha * phi);
-
-                    double cost_i = 0.0;
-                    for (const int &match_idx : bin_indices) {
-                        const auto &p2p_match = p2p_matches_.at(match_idx);
-                        const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - C_mr * p2p_match.query - r_rm_in_m);
-                        double match_cost = p2p_loss_func_->cost(sqrt_rinv * fabs(raw_error));
-                        if (!std::isnan(match_cost)) {cost_i += match_cost;}
-                    }
-
-                    if (!std::isnan(cost_i)) {cost += cost_i;}
-                } catch (const std::exception& e) {
-                    std::cerr << "[P2PGlobalSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
-                } catch (...) {
-                    std::cerr << "[P2PGlobalSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
+                    start_index = k;
+                    end_index = k;
                 }
-            }
+                Eigen::Matrix3d C_mr = states[0].C_mr;
+                Eigen::Vector3d r_rm_in_m = states[0].r_rm_in_m;
+                double alpha = 0;
+                if ((ts == pose_times[start_index]) || (start_index == end_index) || (pose_times[start_index] == pose_times[end_index])) {
+                    alpha = 0;
+                } else if (ts == pose_times[end_index]) {
+                    alpha = 1;
+                } else {
+                    alpha = (ts - pose_times[start_index]) / (pose_times[end_index] - pose_times[start_index]);
+                }
+                r_rm_in_m = alpha * states[end_index].r_rm_in_m + (1 - alpha) * states[start_index].r_rm_in_m;
+                const Eigen::Vector3d phi = math::so3::rot2vec(states[start_index].C_mr.transpose() * states[end_index].C_mr);
+                C_mr = states[start_index].C_mr * math::so3::vec2rot(alpha * phi);
 
-            return cost;
+                double cost_i = 0.0;
+                for (const int &match_idx : bin_indices) {
+                    const auto &p2p_match = p2p_matches_.at(match_idx);
+                    const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - C_mr * p2p_match.query - r_rm_in_m);
+                    double match_cost = p2p_loss_func_->cost(sqrt_rinv * fabs(raw_error));
+                    if (!std::isnan(match_cost)) {cost_i += match_cost;}
+                }
+
+                if (!std::isnan(cost_i)) {cost += cost_i;}
+            } catch (const std::exception& e) {
+                std::cerr << "[P2PGlobalSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[P2PGlobalSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
+            }
         }
 
-        // Parallel processing with TBB parallel_for for large meas_times_
-        tbb::global_control gc(tbb::global_control::max_allowed_parallelism, options_.num_threads);
-        double total_cost = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, meas_times_.size(), 100),0.0, // Initial value
-            [states, pose_times, sqrt_rinv, this](const tbb::blocked_range<size_t>& range, double init) -> double {
-                double local_cost = init;
-                for (size_t i = range.begin(); i != range.end(); ++i) {
-                    try {
-                        const double &ts = meas_times_[i];
-                        const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
-
-                        // Interpolation
-                        int start_index = 0, end_index = 0;
-                        for (size_t k = 0; k < pose_times.size(); ++k) {
-                            if (pose_times[k] > ts) {
-                                end_index = k;
-                                break;
-                            }
-                            start_index = k;
-                            end_index = k;
-                        }
-                        Eigen::Matrix3d C_mr = states[0].C_mr;
-                        Eigen::Vector3d r_rm_in_m = states[0].r_rm_in_m;
-                        double alpha = 0;
-                        if ((ts == pose_times[start_index]) || (start_index == end_index) || 
-                            (pose_times[start_index] == pose_times[end_index])) {
-                            alpha = 0;
-                        } else if (ts == pose_times[end_index]) {
-                            alpha = 1;
-                        } else {
-                            alpha = (ts - pose_times[start_index]) / (pose_times[end_index] - pose_times[start_index]);
-                        }
-                        r_rm_in_m = alpha * states[end_index].r_rm_in_m + (1 - alpha) * states[start_index].r_rm_in_m;
-                        const Eigen::Vector3d phi = math::so3::rot2vec(states[start_index].C_mr.transpose() * states[end_index].C_mr);
-                        C_mr = states[start_index].C_mr * math::so3::vec2rot(alpha * phi);
-
-                        double cost_i = 0.0;
-                        for (const int &match_idx : bin_indices) {
-                            const auto &p2p_match = p2p_matches_.at(match_idx);
-                            const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - C_mr * p2p_match.query - r_rm_in_m);
-                            double match_cost = p2p_loss_func_->cost(sqrt_rinv * fabs(raw_error));
-                            if (!std::isnan(match_cost)) {cost_i += match_cost;}
-                        }
-
-                        if (!std::isnan(cost_i)) {local_cost += cost_i; }
-                    } catch (const std::exception& e) {
-                        std::cerr << "[P2PGlobalSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
-                    } catch (...) {
-                        std::cerr << "[P2PGlobalSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
-                    }
-                }
-                return local_cost; // Returns partial sum to TBB, not exiting cost
-            },
-            std::plus<double>() // Combine partial results
-        );
-
-        return total_cost;
+        return cost;
     }
 
     void P2PGlobalSuperCostTerm::getRelatedVarKeys(KeySet &keys) const {
@@ -416,159 +357,77 @@ namespace finalicp {
         // Thread-local accumulators for A and c
         using Matrix15x15 = Eigen::Matrix<double, 15, 15>;
         using Vector15 = Eigen::Matrix<double, 15, 1>;
-        tbb::combinable<Matrix15x15> local_A([]() { return Matrix15x15::Zero(); });
-        tbb::combinable<Vector15> local_c([]() { return Vector15::Zero(); });
 
         // Process measurement times: sequential for small sizes, parallel for large
-        if (meas_times_.size() < 100) { // Tune threshold via profiling
-            Matrix15x15 A = Matrix15x15::Zero();
-            Vector15 c = Vector15::Zero();
-            for (int i = 0; i < (int)meas_times_.size(); ++i) {
-                try {
-                    const double &ts = meas_times_[i];
-                    const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
+        Matrix15x15 A = Matrix15x15::Zero();
+        Vector15 c = Vector15::Zero();
+        for (int i = 0; i < (int)meas_times_.size(); ++i) {
+            try {
+                const double &ts = meas_times_[i];
+                const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
 
-                    // Interpolation
-                    int start_index = 0, end_index = 0;
-                    for (size_t k = 0; k < pose_times.size(); ++k) {
-                        if (pose_times[k] > ts) {
-                            end_index = k;
-                            break;
-                        }
-                        start_index = k;
+                // Interpolation
+                int start_index = 0, end_index = 0;
+                for (size_t k = 0; k < pose_times.size(); ++k) {
+                    if (pose_times[k] > ts) {
                         end_index = k;
+                        break;
                     }
-                    Eigen::Matrix3d C_mr = states[0].C_mr;
-                    Eigen::Vector3d r_rm_in_m = states[0].r_rm_in_m;
-                    double alpha = 0;
-                    if ((ts == pose_times[start_index]) || (start_index == end_index) || 
-                        (pose_times[start_index] == pose_times[end_index])) {
-                        alpha = 0;
-                    } else if (ts == pose_times[end_index]) {
-                        alpha = 1;
-                    } else {
-                        alpha = (ts - pose_times[start_index]) / (pose_times[end_index] - pose_times[start_index]);
-                    }
-                    r_rm_in_m = alpha * states[end_index].r_rm_in_m + (1 - alpha) * states[start_index].r_rm_in_m;
-                    const Eigen::Vector3d phi = math::so3::rot2vec(states[start_index].C_mr.transpose() * states[end_index].C_mr);
-                    C_mr = states[start_index].C_mr * math::so3::vec2rot(alpha * phi);
-
-                    // Interpolation Jacobians
-                    const Eigen::Matrix3d dr_dr1 = Eigen::Matrix3d::Identity() * (1 - alpha);
-                    const Eigen::Matrix3d dr_dr2 = Eigen::Matrix3d::Identity() * alpha;
-                    const Eigen::Matrix3d a_jac = alpha * math::so3::vec2jac(-alpha * phi) * 
-                                                math::so3::vec2jacinv(-phi);
-                    const Eigen::Matrix3d dc_dc1 = Eigen::Matrix3d::Identity() - a_jac;
-                    const Eigen::Matrix3d dc_dc2 = a_jac;
-
-                    // Measurement Jacobians
-                    Eigen::Matrix<double, 1, 3> de_dr = Eigen::Matrix<double, 1, 3>::Zero();
-                    Eigen::Matrix<double, 1, 3> de_dc = Eigen::Matrix<double, 1, 3>::Zero();
-                    double error = 0.0;
-
-                    for (const int &match_idx : bin_indices) {
-                        const auto &p2p_match = p2p_matches_.at(match_idx);
-                        const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - C_mr * p2p_match.query - r_rm_in_m);
-                        const double sqrt_w = sqrt(p2p_loss_func_->weight(fabs(raw_error)));
-                        error += sqrt_w * sqrt_rinv * raw_error;
-                        de_dr -= sqrt_w * sqrt_rinv * p2p_match.normal.transpose();
-                        de_dc += sqrt_w * sqrt_rinv * p2p_match.normal.transpose() * C_mr * math::so3::hat(p2p_match.query);
-                    }
-
-                    // Get Jacobians of the bracketing states with respect to perturbations
-                    const Eigen::Matrix<double, 3, 15> &dr1_dx = states[start_index].jacobian.block<3, 15>(0, 0);
-                    const Eigen::Matrix<double, 3, 15> &dc1_dx = states[start_index].jacobian.block<3, 15>(3, 0);
-                    const Eigen::Matrix<double, 3, 15> &dr2_dx = states[end_index].jacobian.block<3, 15>(0, 0);
-                    const Eigen::Matrix<double, 3, 15> &dc2_dx = states[end_index].jacobian.block<3, 15>(3, 0);
-                    const Eigen::Matrix<double, 1, 15> G = de_dr * (dr_dr1 * dr1_dx + dr_dr2 * dr2_dx) + de_dc * (dc_dc1 * dc1_dx + dc_dc2 * dc2_dx);
-
-                    A += G.transpose() * G;
-                    c -= G.transpose() * error;
-                } catch (const std::exception& e) {
-                    std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
-                } catch (...) {
-                    std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
+                    start_index = k;
+                    end_index = k;
                 }
+                Eigen::Matrix3d C_mr = states[0].C_mr;
+                Eigen::Vector3d r_rm_in_m = states[0].r_rm_in_m;
+                double alpha = 0;
+                if ((ts == pose_times[start_index]) || (start_index == end_index) || 
+                    (pose_times[start_index] == pose_times[end_index])) {
+                    alpha = 0;
+                } else if (ts == pose_times[end_index]) {
+                    alpha = 1;
+                } else {
+                    alpha = (ts - pose_times[start_index]) / (pose_times[end_index] - pose_times[start_index]);
+                }
+                r_rm_in_m = alpha * states[end_index].r_rm_in_m + (1 - alpha) * states[start_index].r_rm_in_m;
+                const Eigen::Vector3d phi = math::so3::rot2vec(states[start_index].C_mr.transpose() * states[end_index].C_mr);
+                C_mr = states[start_index].C_mr * math::so3::vec2rot(alpha * phi);
+
+                // Interpolation Jacobians
+                const Eigen::Matrix3d dr_dr1 = Eigen::Matrix3d::Identity() * (1 - alpha);
+                const Eigen::Matrix3d dr_dr2 = Eigen::Matrix3d::Identity() * alpha;
+                const Eigen::Matrix3d a_jac = alpha * math::so3::vec2jac(-alpha * phi) * 
+                                            math::so3::vec2jacinv(-phi);
+                const Eigen::Matrix3d dc_dc1 = Eigen::Matrix3d::Identity() - a_jac;
+                const Eigen::Matrix3d dc_dc2 = a_jac;
+
+                // Measurement Jacobians
+                Eigen::Matrix<double, 1, 3> de_dr = Eigen::Matrix<double, 1, 3>::Zero();
+                Eigen::Matrix<double, 1, 3> de_dc = Eigen::Matrix<double, 1, 3>::Zero();
+                double error = 0.0;
+
+                for (const int &match_idx : bin_indices) {
+                    const auto &p2p_match = p2p_matches_.at(match_idx);
+                    const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - C_mr * p2p_match.query - r_rm_in_m);
+                    const double sqrt_w = sqrt(p2p_loss_func_->weight(fabs(raw_error)));
+                    error += sqrt_w * sqrt_rinv * raw_error;
+                    de_dr -= sqrt_w * sqrt_rinv * p2p_match.normal.transpose();
+                    de_dc += sqrt_w * sqrt_rinv * p2p_match.normal.transpose() * C_mr * math::so3::hat(p2p_match.query);
+                }
+
+                // Get Jacobians of the bracketing states with respect to perturbations
+                const Eigen::Matrix<double, 3, 15> &dr1_dx = states[start_index].jacobian.block<3, 15>(0, 0);
+                const Eigen::Matrix<double, 3, 15> &dc1_dx = states[start_index].jacobian.block<3, 15>(3, 0);
+                const Eigen::Matrix<double, 3, 15> &dr2_dx = states[end_index].jacobian.block<3, 15>(0, 0);
+                const Eigen::Matrix<double, 3, 15> &dc2_dx = states[end_index].jacobian.block<3, 15>(3, 0);
+                const Eigen::Matrix<double, 1, 15> G = de_dr * (dr_dr1 * dr1_dx + dr_dr2 * dr2_dx) + de_dc * (dc_dc1 * dc1_dx + dc_dc2 * dc2_dx);
+
+                A += G.transpose() * G;
+                c -= G.transpose() * error;
+            } catch (const std::exception& e) {
+                std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
             }
-            local_A.local() = A;
-            local_c.local() = c;
-        } else {
-            tbb::parallel_for(tbb::blocked_range<size_t>(0, meas_times_.size(), 100),
-                [states, pose_times, sqrt_rinv, &local_A, &local_c, this](const tbb::blocked_range<size_t>& range) {
-                    auto& A = local_A.local();
-                    auto& c = local_c.local();
-                    for (size_t i = range.begin(); i != range.end(); ++i) {
-                        try {
-                            const double &ts = meas_times_[i];
-                            const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
-
-                            // Interpolation
-                            int start_index = 0, end_index = 0;
-                            for (size_t k = 0; k < pose_times.size(); ++k) {
-                                if (pose_times[k] > ts) {
-                                    end_index = k;
-                                    break;
-                                }
-                                start_index = k;
-                                end_index = k;
-                            }
-                            Eigen::Matrix3d C_mr = states[0].C_mr;
-                            Eigen::Vector3d r_rm_in_m = states[0].r_rm_in_m;
-                            double alpha = 0;
-                            if ((ts == pose_times[start_index]) || (start_index == end_index) || 
-                                (pose_times[start_index] == pose_times[end_index])) {
-                                alpha = 0;
-                            } else if (ts == pose_times[end_index]) {
-                                alpha = 1;
-                            } else {
-                                alpha = (ts - pose_times[start_index]) / (pose_times[end_index] - pose_times[start_index]);
-                            }
-                            r_rm_in_m = alpha * states[end_index].r_rm_in_m + (1 - alpha) * states[start_index].r_rm_in_m;
-                            const Eigen::Vector3d phi = math::so3::rot2vec(states[start_index].C_mr.transpose() * states[end_index].C_mr);
-                            C_mr = states[start_index].C_mr * math::so3::vec2rot(alpha * phi);
-
-                            // Interpolation Jacobians
-                            const Eigen::Matrix3d dr_dr1 = Eigen::Matrix3d::Identity() * (1 - alpha);
-                            const Eigen::Matrix3d dr_dr2 = Eigen::Matrix3d::Identity() * alpha;
-                            const Eigen::Matrix3d a_jac = alpha * math::so3::vec2jac(-alpha * phi) * math::so3::vec2jacinv(-phi);
-                            const Eigen::Matrix3d dc_dc1 = Eigen::Matrix3d::Identity() - a_jac;
-                            const Eigen::Matrix3d dc_dc2 = a_jac;
-
-                            // Measurement Jacobians
-                            Eigen::Matrix<double, 1, 3> de_dr = Eigen::Matrix<double, 1, 3>::Zero();
-                            Eigen::Matrix<double, 1, 3> de_dc = Eigen::Matrix<double, 1, 3>::Zero();
-                            double error = 0.0;
-
-                            for (const int &match_idx : bin_indices) {
-                                const auto &p2p_match = p2p_matches_.at(match_idx);
-                                const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - C_mr * p2p_match.query - r_rm_in_m);
-                                const double sqrt_w = sqrt(p2p_loss_func_->weight(fabs(raw_error)));
-                                error += sqrt_w * sqrt_rinv * raw_error;
-                                de_dr -= sqrt_w * sqrt_rinv * p2p_match.normal.transpose();
-                                de_dc += sqrt_w * sqrt_rinv * p2p_match.normal.transpose() * C_mr * math::so3::hat(p2p_match.query);
-                            }
-
-                            // Get Jacobians of the bracketing states with respect to perturbations
-                            const Eigen::Matrix<double, 3, 15> &dr1_dx = states[start_index].jacobian.block<3, 15>(0, 0);
-                            const Eigen::Matrix<double, 3, 15> &dc1_dx = states[start_index].jacobian.block<3, 15>(3, 0);
-                            const Eigen::Matrix<double, 3, 15> &dr2_dx = states[end_index].jacobian.block<3, 15>(0, 0);
-                            const Eigen::Matrix<double, 3, 15> &dc2_dx = states[end_index].jacobian.block<3, 15>(3, 0);
-                            const Eigen::Matrix<double, 1, 15> G = de_dr * (dr_dr1 * dr1_dx + dr_dr2 * dr2_dx) + de_dc * (dc_dc1 * dc1_dx + dc_dc2 * dc2_dx);
-
-                            A += G.transpose() * G;
-                            c -= G.transpose() * error;
-                        } catch (const std::exception& e) {
-                            std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ", timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
-                        } catch (...) {
-                            std::cerr << "[P2PGlobalSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ", timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
-                        }
-                    }
-                });
         }
-
-        // Combine thread-local A and c
-        Matrix15x15 A = local_A.combine([](const Matrix15x15& a, const Matrix15x15& b) { return a + b; });
-        Vector15 c = local_c.combine([](const Vector15& a, const Vector15& b) { return a + b; });
 
         // Determine active variables and extract keys
         std::vector<bool> active;

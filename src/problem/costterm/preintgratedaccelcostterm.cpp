@@ -135,7 +135,7 @@ namespace finalicp {
 
     void PreintAccCostTerm::initialize_interp_matrices_() {
         const Eigen::Matrix<double, 6, 1> ones = Eigen::Matrix<double, 6, 1>::Ones();
-        // #pragma omp parallel for num_threads(options_.num_threads)
+
         for (const IMUData &imu_data : imu_data_vec_) {
             const double &time = imu_data.timestamp;
             if (interp_mats_.find(time) == interp_mats_.end()) {

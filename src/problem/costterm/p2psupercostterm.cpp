@@ -38,78 +38,37 @@ namespace finalicp {
         // const double sqrt_rinv = sqrt(rinv);
 
         // Sequential processing for small meas_times_ to avoid parallel overhead
-        if (meas_times_.size() < 100) { // Tune threshold via profiling
-            double cost = 0;
-            for (unsigned int i = 0; i < meas_times_.size(); ++i) {
-                try {
-                    const double &ts = meas_times_[i];
-                    const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
+        double cost = 0;
+        for (unsigned int i = 0; i < meas_times_.size(); ++i) {
+            try {
+                const double &ts = meas_times_[i];
+                const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
 
-                    // Pose interpolation
-                    const auto &omega = interp_mats_.at(ts).first;
-                    const auto &lambda = interp_mats_.at(ts).second;
-                    const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + lambda(0, 2) * dw1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2 + omega(0, 2) * J_21_inv_curl_dw2;
-                    const math::se3::Transformation T_i1(xi_i1);
-                    const math::se3::Transformation T_i0 = T_i1 * T1;
-                    const Eigen::Matrix4d T_mr = T_i0.inverse().matrix();
+                // Pose interpolation
+                const auto &omega = interp_mats_.at(ts).first;
+                const auto &lambda = interp_mats_.at(ts).second;
+                const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + lambda(0, 2) * dw1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2 + omega(0, 2) * J_21_inv_curl_dw2;
+                const math::se3::Transformation T_i1(xi_i1);
+                const math::se3::Transformation T_i0 = T_i1 * T1;
+                const Eigen::Matrix4d T_mr = T_i0.inverse().matrix();
 
-                    double cost_i = 0.0;
-                    for (const int &match_idx : bin_indices) {
-                        const auto &p2p_match = p2p_matches_.at(match_idx);
-                        const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
-                        double match_cost = p2p_loss_func_->cost(fabs(raw_error));
-                        if (!std::isnan(match_cost)) {cost_i += match_cost;}
-                    }
-
-                    if (!std::isnan(cost_i)) {cost += cost_i;}
-                } catch (const std::exception& e) {
-                    std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
-                } catch (...) {
-                    std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
+                double cost_i = 0.0;
+                for (const int &match_idx : bin_indices) {
+                    const auto &p2p_match = p2p_matches_.at(match_idx);
+                    const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
+                    double match_cost = p2p_loss_func_->cost(fabs(raw_error));
+                    if (!std::isnan(match_cost)) {cost_i += match_cost;}
                 }
-            }
 
-            return cost;
+                if (!std::isnan(cost_i)) {cost += cost_i;}
+            } catch (const std::exception& e) {
+                std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
+            }
         }
 
-        // Parallel processing with TBB parallel_for for large meas_times_
-        tbb::global_control gc(tbb::global_control::max_allowed_parallelism, options_.num_threads);
-        double total_cost = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, meas_times_.size(), 100),0.0, // Initial value
-            [T1, w1, dw1, xi_21, J_21_inv_w2, J_21_inv_curl_dw2, this](const tbb::blocked_range<size_t>& range, double init) -> double {
-                double local_cost = init;
-                for (size_t i = range.begin(); i != range.end(); ++i) {
-                    try {
-                        const double &ts = meas_times_[i];
-                        const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
-
-                        // Pose interpolation
-                        const auto &omega = interp_mats_.at(ts).first;
-                        const auto &lambda = interp_mats_.at(ts).second;
-                        const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + lambda(0, 2) * dw1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2 + omega(0, 2) * J_21_inv_curl_dw2;
-                        const math::se3::Transformation T_i1(xi_i1);
-                        const math::se3::Transformation T_i0 = T_i1 * T1;
-                        const Eigen::Matrix4d T_mr = T_i0.inverse().matrix();
-
-                        double cost_i = 0.0;
-                        for (const int &match_idx : bin_indices) {
-                            const auto &p2p_match = p2p_matches_.at(match_idx);
-                            const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
-                            double match_cost = p2p_loss_func_->cost(fabs(raw_error));
-                            if (!std::isnan(match_cost)) {cost_i += match_cost; }
-                        }
-
-                        if (!std::isnan(cost_i)) {local_cost += cost_i; }
-                    } catch (const std::exception& e) {
-                        std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
-                    } catch (...) {
-                        std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
-                    }
-                }
-                return local_cost;
-            },
-            std::plus<double>() // Combine partial results
-        );
-        return total_cost;
+        return cost;
     }
 
     void P2PSuperCostTerm::getRelatedVarKeys(KeySet &keys) const {
@@ -213,116 +172,55 @@ namespace finalicp {
         // Thread-local accumulators for A and b
         using Matrix36x36 = Eigen::Matrix<double, 36, 36>;
         using Vector36 = Eigen::Matrix<double, 36, 1>;
-        tbb::combinable<Matrix36x36> local_A([]() { return Matrix36x36::Zero(); });
-        tbb::combinable<Vector36> local_b([]() { return Vector36::Zero(); });
 
         // Process measurement times: sequential for small sizes, parallel for large
-        if (meas_times_.size() < 100) { // Tune threshold via profiling
-            Matrix36x36 A = Matrix36x36::Zero();
-            Vector36 b = Vector36::Zero();
-            for (int i = 0; i < (int)meas_times_.size(); ++i) {
-                try {
-                    const double &ts = meas_times_[i];
-                    const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
+        Matrix36x36 A = Matrix36x36::Zero();
+        Vector36 b = Vector36::Zero();
+        for (int i = 0; i < (int)meas_times_.size(); ++i) {
+            try {
+                const double &ts = meas_times_[i];
+                const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
 
-                    // Pose interpolation
-                    const auto &omega = interp_mats_.at(ts).first;
-                    const auto &lambda = interp_mats_.at(ts).second;
-                    const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + lambda(0, 2) * dw1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2 + omega(0, 2) * J_21_inv_curl_dw2;
-                    const math::se3::Transformation T_i1(xi_i1);
-                    const math::se3::Transformation T_i0 = T_i1 * T1;
-                    const Eigen::Matrix4d T_mr = T_i0.inverse().matrix();
+                // Pose interpolation
+                const auto &omega = interp_mats_.at(ts).first;
+                const auto &lambda = interp_mats_.at(ts).second;
+                const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + lambda(0, 2) * dw1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2 + omega(0, 2) * J_21_inv_curl_dw2;
+                const math::se3::Transformation T_i1(xi_i1);
+                const math::se3::Transformation T_i0 = T_i1 * T1;
+                const Eigen::Matrix4d T_mr = T_i0.inverse().matrix();
 
-                    // Pose interpolation Jacobian
-                    Eigen::Matrix<double, 6, 36> interp_jac = Eigen::Matrix<double, 6, 36>::Zero();
-                    const Eigen::Matrix<double, 6, 6> J_i1 = math::se3::vec2jac(xi_i1);
-                    const Eigen::Matrix<double, 6, 6> w = J_i1 * (omega(0, 0) * Eigen::Matrix<double, 6, 6>::Identity() + omega(0, 1) * 0.5 * math::se3::curlyhat(w2) + omega(0, 2) * 0.25 * math::se3::curlyhat(w2) * math::se3::curlyhat(w2) + omega(0, 2) * 0.5 * math::se3::curlyhat(dw2)) * J_21_inv;
-                    interp_jac.block<6, 6>(0, 0) = -w * Ad_T_21 + T_i1.adjoint(); // T1
-                    interp_jac.block<6, 6>(0, 6) = lambda(0, 1) * J_i1; // w1
-                    interp_jac.block<6, 6>(0, 12) = lambda(0, 2) * J_i1; // dw1
-                    interp_jac.block<6, 6>(0, 18) = w; // T2
-                    interp_jac.block<6, 6>(0, 24) = omega(0, 1) * J_i1 * J_21_inv + omega(0, 2) * -0.5 * J_i1 * (math::se3::curlyhat(J_21_inv * w2) - math::se3::curlyhat(w2) * J_21_inv); // w2
-                    interp_jac.block<6, 6>(0, 30) = omega(0, 2) * J_i1 * J_21_inv; // dw2
+                // Pose interpolation Jacobian
+                Eigen::Matrix<double, 6, 36> interp_jac = Eigen::Matrix<double, 6, 36>::Zero();
+                const Eigen::Matrix<double, 6, 6> J_i1 = math::se3::vec2jac(xi_i1);
+                const Eigen::Matrix<double, 6, 6> w = J_i1 * (omega(0, 0) * Eigen::Matrix<double, 6, 6>::Identity() + omega(0, 1) * 0.5 * math::se3::curlyhat(w2) + omega(0, 2) * 0.25 * math::se3::curlyhat(w2) * math::se3::curlyhat(w2) + omega(0, 2) * 0.5 * math::se3::curlyhat(dw2)) * J_21_inv;
+                interp_jac.block<6, 6>(0, 0) = -w * Ad_T_21 + T_i1.adjoint(); // T1
+                interp_jac.block<6, 6>(0, 6) = lambda(0, 1) * J_i1; // w1
+                interp_jac.block<6, 6>(0, 12) = lambda(0, 2) * J_i1; // dw1
+                interp_jac.block<6, 6>(0, 18) = w; // T2
+                interp_jac.block<6, 6>(0, 24) = omega(0, 1) * J_i1 * J_21_inv + omega(0, 2) * -0.5 * J_i1 * (math::se3::curlyhat(J_21_inv * w2) - math::se3::curlyhat(w2) * J_21_inv); // w2
+                interp_jac.block<6, 6>(0, 30) = omega(0, 2) * J_i1 * J_21_inv; // dw2
 
-                    // Measurement Jacobians
-                    Eigen::Matrix<double, 1, 6> Gmeas = Eigen::Matrix<double, 1, 6>::Zero();
-                    double error = 0.0;
+                // Measurement Jacobians
+                Eigen::Matrix<double, 1, 6> Gmeas = Eigen::Matrix<double, 1, 6>::Zero();
+                double error = 0.0;
 
-                    for (const int &match_idx : bin_indices) {
-                        const auto &p2p_match = p2p_matches_.at(match_idx);
-                        const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
-                        const double sqrt_w = sqrt(p2p_loss_func_->weight(fabs(raw_error)));
-                        error += sqrt_w * raw_error;
-                        Gmeas += sqrt_w * p2p_match.normal.transpose() * (T_mr * math::se3::point2fs(p2p_match.query)).block<3, 6>(0, 0);
-                    }
-
-                    const Eigen::Matrix<double, 1, 36> G = Gmeas * interp_jac;
-                    A += G.transpose() * G;
-                    b -= G.transpose() * error;
-                } catch (const std::exception& e) {
-                    std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
-                } catch (...) {
-                    std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
+                for (const int &match_idx : bin_indices) {
+                    const auto &p2p_match = p2p_matches_.at(match_idx);
+                    const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
+                    const double sqrt_w = sqrt(p2p_loss_func_->weight(fabs(raw_error)));
+                    error += sqrt_w * raw_error;
+                    Gmeas += sqrt_w * p2p_match.normal.transpose() * (T_mr * math::se3::point2fs(p2p_match.query)).block<3, 6>(0, 0);
                 }
+
+                const Eigen::Matrix<double, 1, 36> G = Gmeas * interp_jac;
+                A += G.transpose() * G;
+                b -= G.transpose() * error;
+            } catch (const std::exception& e) {
+                std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
             }
-            local_A.local() = A;
-            local_b.local() = b;
-        } else {
-            tbb::parallel_for(tbb::blocked_range<size_t>(0, meas_times_.size(), 100),
-                [T1, w1, dw1, xi_21, J_21_inv_w2, J_21_inv_curl_dw2, Ad_T_21, w2, dw2, J_21_inv, &local_A, &local_b, this](const tbb::blocked_range<size_t>& range) {
-                    auto& A = local_A.local();
-                    auto& b = local_b.local();
-                    for (size_t i = range.begin(); i != range.end(); ++i) {
-                        try {
-                            const double &ts = meas_times_[i];
-                            const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
-
-                            // Pose interpolation
-                            const auto &omega = interp_mats_.at(ts).first;
-                            const auto &lambda = interp_mats_.at(ts).second;
-                            const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + lambda(0, 2) * dw1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2 + omega(0, 2) * J_21_inv_curl_dw2;
-                            const math::se3::Transformation T_i1(xi_i1);
-                            const math::se3::Transformation T_i0 = T_i1 * T1;
-                            const Eigen::Matrix4d T_mr = T_i0.inverse().matrix();
-
-                            // Pose interpolation Jacobian
-                            Eigen::Matrix<double, 6, 36> interp_jac = Eigen::Matrix<double, 6, 36>::Zero();
-                            const Eigen::Matrix<double, 6, 6> J_i1 = math::se3::vec2jac(xi_i1);
-                            const Eigen::Matrix<double, 6, 6> w = J_i1 * (omega(0, 0) * Eigen::Matrix<double, 6, 6>::Identity() + omega(0, 1) * 0.5 * math::se3::curlyhat(w2) + omega(0, 2) * 0.25 * math::se3::curlyhat(w2) * math::se3::curlyhat(w2) + omega(0, 2) * 0.5 * math::se3::curlyhat(dw2)) * J_21_inv;
-                            interp_jac.block<6, 6>(0, 0) = -w * Ad_T_21 + T_i1.adjoint(); // T1
-                            interp_jac.block<6, 6>(0, 6) = lambda(0, 1) * J_i1; // w1
-                            interp_jac.block<6, 6>(0, 12) = lambda(0, 2) * J_i1; // dw1
-                            interp_jac.block<6, 6>(0, 18) = w; // T2
-                            interp_jac.block<6, 6>(0, 24) = omega(0, 1) * J_i1 * J_21_inv + omega(0, 2) * -0.5 * J_i1 * (math::se3::curlyhat(J_21_inv * w2) - math::se3::curlyhat(w2) * J_21_inv); // w2
-                            interp_jac.block<6, 6>(0, 30) = omega(0, 2) * J_i1 * J_21_inv; // dw2
-
-                            // Measurement Jacobians
-                            Eigen::Matrix<double, 1, 6> Gmeas = Eigen::Matrix<double, 1, 6>::Zero();
-                            double error = 0.0;
-
-                            for (const int &match_idx : bin_indices) {
-                                const auto &p2p_match = p2p_matches_.at(match_idx);
-                                const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
-                                const double sqrt_w = sqrt(p2p_loss_func_->weight(fabs(raw_error)));
-                                error += sqrt_w  * raw_error;
-                                Gmeas += sqrt_w  * p2p_match.normal.transpose() * (T_mr * math::se3::point2fs(p2p_match.query)).block<3, 6>(0, 0);
-                            }
-
-                            const Eigen::Matrix<double, 1, 36> G = Gmeas * interp_jac;
-                            A += G.transpose() * G;
-                            b -= G.transpose() * error;
-                        } catch (const std::exception& e) {
-                            std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] STEAM exception at index " << i << ", timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
-                        } catch (...) {
-                            std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] STEAM exception at index " << i << ", timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
-                        }
-                    }
-                });
         }
-
-        // Combine thread-local A and b
-        Matrix36x36 A = local_A.combine([](const Matrix36x36& a, const Matrix36x36& b) { return a + b; });
-        Vector36 b = local_b.combine([](const Vector36& a, const Vector36& b) { return a + b; });
 
         // Determine active variables and extract keys
         std::vector<bool> active;

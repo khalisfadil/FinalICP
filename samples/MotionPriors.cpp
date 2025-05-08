@@ -270,7 +270,7 @@ void SingerPrior() {
 
 int main(int argc, char** argv) {
   WNOAPrior();
-  WNOJPrior();
-  SingerPrior();
+  // WNOJPrior();
+  // SingerPrior();
   return 0;
 }

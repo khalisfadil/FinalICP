@@ -38,99 +38,48 @@ namespace finalicp {
         const auto J_21_inv_w2 = J_21_inv * w2;
 
         // Sequential processing for small imu_data_vec_ to avoid parallel overhead
-        if (imu_data_vec_.size() < 100) { // Tune threshold via profiling
-            double cost = 0;
-            for (int i = 0; i < (int)imu_data_vec_.size(); ++i) {
-                try {
-                    const double &ts = imu_data_vec_[i].timestamp;
-                    const IMUData &imu_data = imu_data_vec_[i];
+        double cost = 0;
+        for (int i = 0; i < (int)imu_data_vec_.size(); ++i) {
+            try {
+                const double &ts = imu_data_vec_[i].timestamp;
+                const IMUData &imu_data = imu_data_vec_[i];
 
-                    // Pose interpolation
-                    const auto& omega = interp_mats_.at(ts).first;
-                    const auto& lambda = interp_mats_.at(ts).second;
+                // Pose interpolation
+                const auto& omega = interp_mats_.at(ts).first;
+                const auto& lambda = interp_mats_.at(ts).second;
 
-                    const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2;
-                    const Eigen::Matrix<double, 6, 1> xi_j1 =lambda(1, 1) * w1 + omega(1, 0) * xi_21 + omega(1, 1) * J_21_inv_w2;
-                    const Eigen::Matrix<double, 6, 1> w_i = math::se3::vec2jac(xi_i1) * xi_j1;
+                const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2;
+                const Eigen::Matrix<double, 6, 1> xi_j1 =lambda(1, 1) * w1 + omega(1, 0) * xi_21 + omega(1, 1) * J_21_inv_w2;
+                const Eigen::Matrix<double, 6, 1> w_i = math::se3::vec2jac(xi_i1) * xi_j1;
 
-                    // Interpolated bias
-                    Eigen::Matrix<double, 6, 1> bias_i = Eigen::Matrix<double, 6, 1>::Zero();
-                    const double tau = ts - knot1_->time().seconds();
-                    const double T = knot2_->time().seconds() - knot1_->time().seconds();
-                    const double ratio = tau / T;
-                    const double omega_ = ratio;
-                    const double lambda_ = 1 - ratio;
-                    bias_i = lambda_ * b1 + omega_ * b2;
+                // Interpolated bias
+                Eigen::Matrix<double, 6, 1> bias_i = Eigen::Matrix<double, 6, 1>::Zero();
+                const double tau = ts - knot1_->time().seconds();
+                const double T = knot2_->time().seconds() - knot1_->time().seconds();
+                const double ratio = tau / T;
+                const double omega_ = ratio;
+                const double lambda_ = 1 - ratio;
+                bias_i = lambda_ * b1 + omega_ * b2;
 
-                    // Compute gyroscope error
-                    Eigen::Matrix<double, 3, 1> raw_error_gyro = Eigen::Matrix<double, 3, 1>::Zero();
-                    if (options_.se2) {
-                        raw_error_gyro(2, 0) = imu_data.ang_vel(2, 0) + w_i(5, 0) - bias_i(5, 0);
-                    } else {
-                        raw_error_gyro = imu_data.ang_vel + w_i.block<3, 1>(3, 0) - bias_i.block<3, 1>(3, 0);
-                    }
-
-                    // Evaluate cost
-                    double cost_i = gyro_loss_func_->cost(gyro_noise_model_->getWhitenedErrorNorm(raw_error_gyro));
-                    if (!std::isnan(cost_i)) { cost += cost_i; }
-
-                } catch (const std::exception& e) {
-                    std::cerr << "[GyroSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
-                } catch (...) {
-                    std::cerr << "[GyroSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
+                // Compute gyroscope error
+                Eigen::Matrix<double, 3, 1> raw_error_gyro = Eigen::Matrix<double, 3, 1>::Zero();
+                if (options_.se2) {
+                    raw_error_gyro(2, 0) = imu_data.ang_vel(2, 0) + w_i(5, 0) - bias_i(5, 0);
+                } else {
+                    raw_error_gyro = imu_data.ang_vel + w_i.block<3, 1>(3, 0) - bias_i.block<3, 1>(3, 0);
                 }
+
+                // Evaluate cost
+                double cost_i = gyro_loss_func_->cost(gyro_noise_model_->getWhitenedErrorNorm(raw_error_gyro));
+                if (!std::isnan(cost_i)) { cost += cost_i; }
+
+            } catch (const std::exception& e) {
+                std::cerr << "[GyroSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[GyroSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
             }
-            return cost;
         }
-
-        // Parallel processing with TBB parallel_reduce for large imu_data_vec_
-        tbb::global_control gc(tbb::global_control::max_allowed_parallelism, options_.num_threads);
-        double total_cost = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, imu_data_vec_.size(), 100),0.0, // Initial value
-            [this, w1, xi_21, J_21_inv_w2, b1, b2](const tbb::blocked_range<size_t>& range, double init) -> double {
-                double local_cost = init;
-                for (size_t i = range.begin(); i != range.end(); ++i) {
-                    try {
-                        const double ts = imu_data_vec_[i].timestamp;
-                        const IMUData& imu_data = imu_data_vec_[i];
-
-                        // Pose interpolation
-                        const auto& omega = interp_mats_.at(ts).first;
-                        const auto& lambda = interp_mats_.at(ts).second;
-                        const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2;
-                        const Eigen::Matrix<double, 6, 1> xi_j1 = lambda(1, 1) * w1 + omega(1, 0) * xi_21 + omega(1, 1) * J_21_inv_w2;
-                        const Eigen::Matrix<double, 6, 1> w_i = math::se3::vec2jac(xi_i1) * xi_j1;
-
-                        // Interpolated bias
-                        Eigen::Matrix<double, 6, 1> bias_i = Eigen::Matrix<double, 6, 1>::Zero();
-                        const double tau = ts - knot1_->time().seconds();
-                        const double T = knot2_->time().seconds() - knot1_->time().seconds();
-                        const double ratio = tau / T;
-                        bias_i = (1.0 - ratio) * b1 + ratio * b2;
-
-                        // Compute gyroscope error
-                        Eigen::Matrix<double, 3, 1> raw_error_gyro = Eigen::Matrix<double, 3, 1>::Zero();
-                        if (options_.se2) {
-                            raw_error_gyro(2, 0) = imu_data.ang_vel(2, 0) + w_i(5, 0) - bias_i(5, 0);
-                        } else {
-                            raw_error_gyro = imu_data.ang_vel + w_i.block<3, 1>(3, 0) - bias_i.block<3, 1>(3, 0);
-                        }
-
-                        // Evaluate cost
-                        double cost_i = gyro_loss_func_->cost(gyro_noise_model_->getWhitenedErrorNorm(raw_error_gyro));
-                        if (!std::isnan(cost_i)) { local_cost += cost_i; }
-
-                    } catch (const std::exception& e) {
-                        std::cerr << "[GyroSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
-                    } catch (...) {
-                        std::cerr << "[GyroSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
-                    }
-                }
-                return local_cost; // Returns partial sum to TBB, not exiting cost
-            },
-             std::plus<double>() // Combine partial results
-        );
-
-        return total_cost;
+        return cost;
     }
 
     void GyroSuperCostTerm::getRelatedVarKeys(KeySet &keys) const {
@@ -146,27 +95,16 @@ namespace finalicp {
 
     void GyroSuperCostTerm::initialize_interp_matrices_() {
         const Eigen::Matrix<double, 6, 1> ones = Eigen::Matrix<double, 6, 1>::Ones();
-        // #pragma omp parallel for num_threads(options_.num_threads)
+
         for (const IMUData &imu_data : imu_data_vec_) {
             const auto time = imu_data.timestamp;
             if (interp_mats_.find(time) == interp_mats_.end()) {
             const double tau = (Time(time) - time1_).seconds();
-            // const double T = (time2_ - time1_).seconds();
-            // const double ratio = tau / T;
-            // const double ratio2 = ratio * ratio;
-            // const double ratio3 = ratio2 * ratio;
-            // Calculate 'omega' interpolation values
+
             Eigen::Matrix4d omega = Eigen::Matrix4d::Zero();
-            // omega(0, 0) = 3.0 * ratio2 - 2.0 * ratio3;
-            // omega(0, 1) = tau * (ratio2 - ratio);
-            // omega(1, 0) = 6.0 * (ratio - ratio2) / T;
-            // omega(1, 1) = 3.0 * ratio2 - 2.0 * ratio;
-            // Calculate 'lambda' interpolation values
+
             Eigen::Matrix4d lambda = Eigen::Matrix4d::Zero();
-            // lambda(0, 0) = 1.0 - omega(0, 0);
-            // lambda(0, 1) = tau - T * omega(0, 0) - omega(0, 1);
-            // lambda(1, 0) = -omega(1, 0);
-            // lambda(1, 1) = 1.0 - T * omega(1, 0) - omega(1, 1);
+
             const double kappa = knot2_->time().seconds() - time;
             const Matrix12d Q_tau = traj::const_vel::getQ(tau, ones);
             const Matrix12d Tran_kappa = traj::const_vel::getTran(kappa);
@@ -217,145 +155,69 @@ namespace finalicp {
         // Thread-local accumulators for A and b
         using Matrix36x36 = Eigen::Matrix<double, 36, 36>;
         using Vector36 = Eigen::Matrix<double, 36, 1>;
-        tbb::combinable<Matrix36x36> local_A([]() { return Matrix36x36::Zero(); });
-        tbb::combinable<Vector36> local_b([]() { return Vector36::Zero(); });
 
         // Process IMU data: sequential for small sizes, parallel for large
-        if (imu_data_vec_.size() < 100) { // Tune threshold via profiling
-            Matrix36x36 A = Matrix36x36::Zero();
-            Vector36 b = Vector36::Zero();
-            for (int i = 0; i < (int)imu_data_vec_.size(); ++i) {
-                try {
-                    const double &ts = imu_data_vec_[i].timestamp;
-                    const IMUData &imu_data = imu_data_vec_[i];
+        Matrix36x36 A = Matrix36x36::Zero();
+        Vector36 b = Vector36::Zero();
+        for (int i = 0; i < (int)imu_data_vec_.size(); ++i) {
+            try {
+                const double &ts = imu_data_vec_[i].timestamp;
+                const IMUData &imu_data = imu_data_vec_[i];
 
-                    // Interpolation
-                    const auto& omega = interp_mats_.at(ts).first;
-                    const auto& lambda = interp_mats_.at(ts).second;
-                    const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2;
-                    const Eigen::Matrix<double, 6, 1> xi_j1 = lambda(1, 1) * w1 + omega(1, 0) * xi_21 + omega(1, 1) * J_21_inv_w2;
-                    const Eigen::Matrix<double, 6, 1> w_i = math::se3::vec2jac(xi_i1) * xi_j1;
+                // Interpolation
+                const auto& omega = interp_mats_.at(ts).first;
+                const auto& lambda = interp_mats_.at(ts).second;
+                const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2;
+                const Eigen::Matrix<double, 6, 1> xi_j1 = lambda(1, 1) * w1 + omega(1, 0) * xi_21 + omega(1, 1) * J_21_inv_w2;
+                const Eigen::Matrix<double, 6, 1> w_i = math::se3::vec2jac(xi_i1) * xi_j1;
 
-                    // Interpolated bias
-                    Eigen::Matrix<double, 6, 1> bias_i = Eigen::Matrix<double, 6, 1>::Zero();
-                    Eigen::Matrix<double, 6, 12> interp_jac_bias = Eigen::Matrix<double, 6, 12>::Zero();
-                    const double tau = ts - knot1_->time().seconds();
-                    const double T = knot2_->time().seconds() - knot1_->time().seconds();
-                    const double ratio = tau / T;
-                    const double omega_ = ratio;
-                    const double lambda_ = 1 - ratio;
-                    bias_i = lambda_ * b1 + omega_ * b2;
-                    interp_jac_bias.block<6, 6>(0, 0) = Eigen::Matrix<double, 6, 6>::Identity() * lambda_;
-                    interp_jac_bias.block<6, 6>(0, 6) = Eigen::Matrix<double, 6, 6>::Identity() * omega_;
+                // Interpolated bias
+                Eigen::Matrix<double, 6, 1> bias_i = Eigen::Matrix<double, 6, 1>::Zero();
+                Eigen::Matrix<double, 6, 12> interp_jac_bias = Eigen::Matrix<double, 6, 12>::Zero();
+                const double tau = ts - knot1_->time().seconds();
+                const double T = knot2_->time().seconds() - knot1_->time().seconds();
+                const double ratio = tau / T;
+                const double omega_ = ratio;
+                const double lambda_ = 1 - ratio;
+                bias_i = lambda_ * b1 + omega_ * b2;
+                interp_jac_bias.block<6, 6>(0, 0) = Eigen::Matrix<double, 6, 6>::Identity() * lambda_;
+                interp_jac_bias.block<6, 6>(0, 6) = Eigen::Matrix<double, 6, 6>::Identity() * omega_;
 
-                    // Velocity interpolation Jacobians
-                    Eigen::Matrix<double, 6, 24> interp_jac_vel = Eigen::Matrix<double, 6, 24>::Zero();
-                    const Eigen::Matrix<double, 6, 6> J_i1 = math::se3::vec2jac(xi_i1);
-                    const Eigen::Matrix<double, 6, 6> xi_j1_ch = -0.5 * math::se3::curlyhat(xi_j1);
-                    Eigen::Matrix<double, 6, 6> w = J_i1 * (omega(1, 0) * J_21_inv + omega(1, 1) * w2_j_21_inv) + xi_j1_ch * (omega(0, 0) * J_21_inv + omega(0, 1) * w2_j_21_inv);
-                    interp_jac_vel.block<6, 6>(0, 0) = -w * Ad_T_21; // T1
-                    interp_jac_vel.block<6, 6>(0, 6) = (lambda(1, 1) * J_i1 + lambda(0, 1) * xi_j1_ch); // w1
-                    interp_jac_vel.block<6, 6>(0, 12) = w; // T2
-                    interp_jac_vel.block<6, 6>(0, 18) = omega(1, 1) * J_i1 * J_21_inv + omega(0, 1) * xi_j1_ch * J_21_inv; // w2
+                // Velocity interpolation Jacobians
+                Eigen::Matrix<double, 6, 24> interp_jac_vel = Eigen::Matrix<double, 6, 24>::Zero();
+                const Eigen::Matrix<double, 6, 6> J_i1 = math::se3::vec2jac(xi_i1);
+                const Eigen::Matrix<double, 6, 6> xi_j1_ch = -0.5 * math::se3::curlyhat(xi_j1);
+                Eigen::Matrix<double, 6, 6> w = J_i1 * (omega(1, 0) * J_21_inv + omega(1, 1) * w2_j_21_inv) + xi_j1_ch * (omega(0, 0) * J_21_inv + omega(0, 1) * w2_j_21_inv);
+                interp_jac_vel.block<6, 6>(0, 0) = -w * Ad_T_21; // T1
+                interp_jac_vel.block<6, 6>(0, 6) = (lambda(1, 1) * J_i1 + lambda(0, 1) * xi_j1_ch); // w1
+                interp_jac_vel.block<6, 6>(0, 12) = w; // T2
+                interp_jac_vel.block<6, 6>(0, 18) = omega(1, 1) * J_i1 * J_21_inv + omega(0, 1) * xi_j1_ch * J_21_inv; // w2
 
-                    // Evaluate, weight, whiten error
-                    Eigen::Matrix<double, 3, 1> raw_error_gyro = Eigen::Matrix<double, 3, 1>::Zero();
-                    if (options_.se2) {
-                        raw_error_gyro(2, 0) = imu_data.ang_vel(2, 0) + w_i(5, 0) - bias_i(5, 0);
-                    } else {
-                        raw_error_gyro = imu_data.ang_vel + w_i.block<3, 1>(3, 0) - bias_i.block<3, 1>(3, 0);
-                    }
-                    const Eigen::Matrix<double, 3, 1> white_error_gyro = gyro_noise_model_->whitenError(raw_error_gyro);
-                    const double sqrt_w_gyro = sqrt(gyro_loss_func_->weight(white_error_gyro.norm()));
-                    const Eigen::Matrix<double, 3, 1> error_gyro = sqrt_w_gyro * white_error_gyro;
-
-                    // Get Jacobians
-                    Eigen::Matrix<double, 3, 36> G = Eigen::Matrix<double, 3, 36>::Zero();
-                    G.block<3, 24>(0, 0) = sqrt_w_gyro * gyro_noise_model_->getSqrtInformation() * jac_vel_ * interp_jac_vel;
-                    G.block<3, 12>(0, 24) = sqrt_w_gyro * gyro_noise_model_->getSqrtInformation() * jac_bias_ * interp_jac_bias;
-
-                    // Accumulate contributions
-                    A += G.transpose() * G;
-                    b += (-1) * G.transpose() * error_gyro;
-                } catch (const std::exception& e) {
-                    std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] exception at timestamp "<< imu_data_vec_[i].timestamp  << ": " << e.what() << std::endl;
-                } catch (...) {
-                    std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] exception at timestamp "<< imu_data_vec_[i].timestamp  << ": (unknown)" << std::endl;
+                // Evaluate, weight, whiten error
+                Eigen::Matrix<double, 3, 1> raw_error_gyro = Eigen::Matrix<double, 3, 1>::Zero();
+                if (options_.se2) {
+                    raw_error_gyro(2, 0) = imu_data.ang_vel(2, 0) + w_i(5, 0) - bias_i(5, 0);
+                } else {
+                    raw_error_gyro = imu_data.ang_vel + w_i.block<3, 1>(3, 0) - bias_i.block<3, 1>(3, 0);
                 }
+                const Eigen::Matrix<double, 3, 1> white_error_gyro = gyro_noise_model_->whitenError(raw_error_gyro);
+                const double sqrt_w_gyro = sqrt(gyro_loss_func_->weight(white_error_gyro.norm()));
+                const Eigen::Matrix<double, 3, 1> error_gyro = sqrt_w_gyro * white_error_gyro;
+
+                // Get Jacobians
+                Eigen::Matrix<double, 3, 36> G = Eigen::Matrix<double, 3, 36>::Zero();
+                G.block<3, 24>(0, 0) = sqrt_w_gyro * gyro_noise_model_->getSqrtInformation() * jac_vel_ * interp_jac_vel;
+                G.block<3, 12>(0, 24) = sqrt_w_gyro * gyro_noise_model_->getSqrtInformation() * jac_bias_ * interp_jac_bias;
+
+                // Accumulate contributions
+                A += G.transpose() * G;
+                b += (-1) * G.transpose() * error_gyro;
+            } catch (const std::exception& e) {
+                std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] exception at timestamp "<< imu_data_vec_[i].timestamp  << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] exception at timestamp "<< imu_data_vec_[i].timestamp  << ": (unknown)" << std::endl;
             }
-            local_A.local() = A;
-            local_b.local() = b;
-        } else { tbb::parallel_for(tbb::blocked_range<size_t>(0, imu_data_vec_.size(), 100),
-                [w1, xi_21, J_21_inv_w2, b1, b2, J_21_inv, w2_j_21_inv, Ad_T_21, &local_A, &local_b, this](
-                    const tbb::blocked_range<size_t>& range) {
-                    auto& A = local_A.local();
-                    auto& b = local_b.local();
-                    for (size_t i = range.begin(); i != range.end(); ++i) {
-                        try {
-                            const auto& imu_data = imu_data_vec_[i];
-                            const double ts = imu_data.timestamp;
-
-                            // Interpolation
-                            const auto& omega = interp_mats_.at(ts).first;
-                            const auto& lambda = interp_mats_.at(ts).second;
-                            const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2;
-                            const Eigen::Matrix<double, 6, 1> xi_j1 = lambda(1, 1) * w1 + omega(1, 0) * xi_21 + omega(1, 1) * J_21_inv_w2;
-                            const Eigen::Matrix<double, 6, 1> w_i = math::se3::vec2jac(xi_i1) * xi_j1;
-
-                            // Interpolated bias
-                            Eigen::Matrix<double, 6, 1> bias_i = Eigen::Matrix<double, 6, 1>::Zero();
-                            Eigen::Matrix<double, 6, 12> interp_jac_bias = Eigen::Matrix<double, 6, 12>::Zero();
-                            const double tau = ts - knot1_->time().seconds();
-                            const double T = knot2_->time().seconds() - knot1_->time().seconds();
-                            const double ratio = tau / T;
-                            const double omega_ = ratio;
-                            const double lambda_ = 1 - ratio;
-                            bias_i = lambda_ * b1 + omega_ * b2;
-                            interp_jac_bias.block<6, 6>(0, 0) = Eigen::Matrix<double, 6, 6>::Identity() * lambda_;
-                            interp_jac_bias.block<6, 6>(0, 6) = Eigen::Matrix<double, 6, 6>::Identity() * omega_;
-
-                            // Velocity interpolation Jacobians
-                            Eigen::Matrix<double, 6, 24> interp_jac_vel = Eigen::Matrix<double, 6, 24>::Zero();
-                            const Eigen::Matrix<double, 6, 6> J_i1 = math::se3::vec2jac(xi_i1);
-                            const Eigen::Matrix<double, 6, 6> xi_j1_ch = -0.5 * math::se3::curlyhat(xi_j1);
-                            Eigen::Matrix<double, 6, 6> w = J_i1 * (omega(1, 0) * J_21_inv + omega(1, 1) * w2_j_21_inv) + xi_j1_ch * (omega(0, 0) * J_21_inv + omega(0, 1) * w2_j_21_inv);
-                            interp_jac_vel.block<6, 6>(0, 0) = -w * Ad_T_21; // T1
-                            interp_jac_vel.block<6, 6>(0, 6) = (lambda(1, 1) * J_i1 + lambda(0, 1) * xi_j1_ch); // w1
-                            interp_jac_vel.block<6, 6>(0, 12) = w; // T2
-                            interp_jac_vel.block<6, 6>(0, 18) = omega(1, 1) * J_i1 * J_21_inv + omega(0, 1) * xi_j1_ch * J_21_inv; // w2
-
-                            // Evaluate, weight, whiten error
-                            Eigen::Matrix<double, 3, 1> raw_error_gyro = Eigen::Matrix<double, 3, 1>::Zero();
-                            if (options_.se2) {
-                                raw_error_gyro(2, 0) = imu_data.ang_vel(2, 0) + w_i(5, 0) - bias_i(5, 0);
-                            } else {
-                                raw_error_gyro = imu_data.ang_vel + w_i.block<3, 1>(3, 0) - bias_i.block<3, 1>(3, 0);
-                            }
-                            const Eigen::Matrix<double, 3, 1> white_error_gyro = gyro_noise_model_->whitenError(raw_error_gyro);
-                            const double sqrt_w_gyro = sqrt(gyro_loss_func_->weight(white_error_gyro.norm()));
-                            const Eigen::Matrix<double, 3, 1> error_gyro = sqrt_w_gyro * white_error_gyro;
-
-                            // Get Jacobians
-                            Eigen::Matrix<double, 3, 36> G = Eigen::Matrix<double, 3, 36>::Zero();
-                            G.block<3, 24>(0, 0) = sqrt_w_gyro * gyro_noise_model_->getSqrtInformation() * jac_vel_ * interp_jac_vel;
-                            G.block<3, 12>(0, 24) = sqrt_w_gyro * gyro_noise_model_->getSqrtInformation() * jac_bias_ * interp_jac_bias;
-
-                            // Accumulate contributions
-                            A += G.transpose() * G;
-                            b += (-1) * G.transpose() * error_gyro;
-                        } catch (const std::exception& e) {
-                            std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] STEAM exception at index " << i << ", timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
-                        } catch (...) {
-                            std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] STEAM exception at index " << i << ", timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
-                        }
-                    }
-                }
-            );
         }
-
-        // Combine thread-local A and b
-        Matrix36x36 A = local_A.combine([](const Matrix36x36& a, const Matrix36x36& b) { return a + b; });
-        Vector36 b = local_b.combine([](const Vector36& a, const Vector36& b) { return a + b; });
 
         // Determine active variables and extract keys
         std::vector<bool> active;

@@ -12,12 +12,6 @@
 #include <trajectory/constvel/interface.hpp>
 #include <trajectory/time.hpp>
 
-#include <tbb/parallel_for.h>
-#include <tbb/blocked_range.h>
-#include <tbb/global_control.h>
-#include <tbb/spin_mutex.h>
-#include <tbb/combinable.h>
-
 #include <vector>
 #include <cmath>
 #include <atomic>

@@ -12,7 +12,9 @@ namespace finalicp {
         curr_cost_ = prev_cost_ = problem_.cost();
 
         //debug
-        std::cout << "curr_cost_: "  << curr_cost_ << std::endl;
+        // ############################
+        std::cout << "[DEBUG::SolverBase] curr_cost_: "  << curr_cost_ << std::endl;
+        // ############################
     }
 
     void SolverBase::optimize() {
@@ -39,9 +41,6 @@ namespace finalicp {
         curr_iteration_++;
         prev_cost_ = curr_cost_;
         double grad_norm = 0.0;
-
-        //debug
-        std::cout << "start linearizeSolveAndUpdate ..."  << std::endl;
         
         bool step_success = linearizeSolveAndUpdate(curr_cost_, grad_norm);
 

@@ -194,6 +194,89 @@ target_link_libraries(time_test
         Threads::Threads
 )
 
+add_executable(sample_bspline samples/BSplineTrajectoryExample.cpp)
+target_include_directories(sample_bspline
+    PRIVATE
+        ${GTEST_INCLUDE_DIRS}
+        ${THIRDPARTY_INCLUDE_DIRS}
+)
+target_link_libraries(sample_bspline
+    PRIVATE
+        ${PROJECT_NAME}
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+)
+
+add_executable(sample_motionpriors samples/MotionPriors.cpp)
+target_include_directories(sample_motionpriors
+    PRIVATE
+        ${GTEST_INCLUDE_DIRS}
+        ${THIRDPARTY_INCLUDE_DIRS}
+)
+target_link_libraries(sample_motionpriors
+    PRIVATE
+        ${PROJECT_NAME}
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+)
+
+add_executable(sample_slidingwindowfilter samples/SlidingWindow.cpp)
+target_include_directories(sample_slidingwindowfilter
+    PRIVATE
+        ${GTEST_INCLUDE_DIRS}
+        ${THIRDPARTY_INCLUDE_DIRS}
+)
+target_link_libraries(sample_slidingwindowfilter
+    PRIVATE
+        ${PROJECT_NAME}
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+)
+
+add_executable(sample_posegraphrelax samples/PoseGraphRelax.cpp)
+target_include_directories(sample_posegraphrelax
+    PRIVATE
+        ${GTEST_INCLUDE_DIRS}
+        ${THIRDPARTY_INCLUDE_DIRS}
+)
+target_link_libraries(sample_posegraphrelax
+    PRIVATE
+        ${PROJECT_NAME}
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+)
+
+add_executable(sample_pointcloudalignment samples/PointCloudAlingment.cpp)
+target_include_directories(sample_pointcloudalignment
+    PRIVATE
+        ${GTEST_INCLUDE_DIRS}
+        ${THIRDPARTY_INCLUDE_DIRS}
+)
+target_link_libraries(sample_pointcloudalignment
+    PRIVATE
+        ${PROJECT_NAME}
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+)
+
+add_executable(sample_constvelocitytrajprior samples/ConstantVelocityTrajPrior.cpp)
+target_include_directories(sample_constvelocitytrajprior
+    PRIVATE
+        ${GTEST_INCLUDE_DIRS}
+        ${THIRDPARTY_INCLUDE_DIRS}
+)
+target_link_libraries(sample_constvelocitytrajprior
+    PRIVATE
+        ${PROJECT_NAME}
+        GTest::gtest
+        GTest::gtest_main
+)
+
 # Install library and headers
 install(
     DIRECTORY 
@@ -250,3 +333,10 @@ enable_testing()
 add_test(NAME PatternTests COMMAND pattern_tests)
 add_test(NAME JacobianTest COMMAND jacobian_test)
 add_test(NAME TimeTest COMMAND time_test)
+add_test(NAME BsplineSamples COMMAND sample_bspline)
+add_test(NAME MotionPriorsSamples COMMAND sample_motionpriors)
+add_test(NAME SlidingWindowFilterSamples COMMAND sample_slidingwindowfilter)
+add_test(NAME PoseGraphRelaxSamples COMMAND sample_posegraphrelax)
+add_test(NAME PointCloudAlignmentSamples COMMAND sample_pointcloudalignment)
+add_test(NAME ConstVelocityTrajPrior COMMAND sample_constvelocitytrajprior)
+

@@ -125,9 +125,9 @@ namespace finalicp {
         error.block<3, 1>(3, 0) = C_i.transpose() * (p_j - p_i - v_i * delta_t_i_j - 0.5 * gravity_ * pow(delta_t_i_j, 2)) - r_ij;
         error.block<3, 1>(6, 0) = C_i.transpose() * (v_j - v_i - gravity_ * delta_t_i_j) - v_ij;
         return error;
-        }
+    }
 
-        Eigen::Matrix<double, 9, 24> PreintIMUCostTerm::get_jacobian() const {
+    Eigen::Matrix<double, 9, 24> PreintIMUCostTerm::get_jacobian() const {
         Eigen::Matrix3d C_ij = Eigen::Matrix3d::Identity();
         const Eigen::Matrix<double, 6, 1> b = bias_->forward()->value();
         const Eigen::Vector3d ba = b.block<3, 1>(0, 0);
@@ -221,14 +221,11 @@ namespace finalicp {
         // Thread-local accumulators for A and c
         using Matrix24x24 = Eigen::Matrix<double, 24, 24>;
         using Vector24 = Eigen::Matrix<double, 24, 1>;
-        tbb::combinable<Matrix24x24> local_A([]() { return Matrix24x24::Zero(); });
-        tbb::combinable<Vector24> local_c([]() { return Vector24::Zero(); });
+        Matrix24x24 A = Matrix24x24::Zero();
+        Vector24 c = Vector24::Zero();
 
         // Process preintegrated measurement (single computation, no loop)
         try {
-            Matrix24x24 A = Matrix24x24::Zero();
-            Vector24 c = Vector24::Zero();
-
             // Compute Jacobians, preintegrated measurement, and error
             Eigen::Matrix<double, 9, 24> G = get_jacobian();
             const PreintegratedMeasurement preint_meas = preintegrate_();
@@ -243,17 +240,11 @@ namespace finalicp {
             A = G.transpose() * G;
             c = (-1) * G.transpose() * error;
 
-            local_A.local() = A;
-            local_c.local() = c;
         } catch (const std::exception& e) {
             std::cerr << "[PreintIMUCostTerm::buildGaussNewtonTerms] exception: " << e.what() << std::endl;
         } catch (...) {
             std::cerr << "[PreintIMUCostTerm::buildGaussNewtonTerms] exception: (unknown)" << std::endl;
         }
-
-        // Combine thread-local A and c (single thread in this case, but kept for consistency)
-        Matrix24x24 A = local_A.combine([](const Matrix24x24& a, const Matrix24x24& b) { return a + b; });
-        Vector24 c = local_c.combine([](const Vector24& a, const Vector24& b) { return a + b; });
 
         // Determine active variables and extract keys
         std::vector<bool> active;

@@ -39,8 +39,8 @@ namespace finalicp {
 
         // Debug: Log Hessian and gradient sizes and norms
         // ################################
-        std::cout << "[DEBUG] Iteration " << curr_iteration_ << ": Hessian size (" << approximate_hessian.rows() << "x" << approximate_hessian.cols() << "), non-zeros: " << approximate_hessian.nonZeros() << std::endl;
-        std::cout << "[DEBUG] Iteration " << curr_iteration_ << ": Gradient size (" << gradient_vector.size() << "), norm: " << grad_norm << std::endl;
+        std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Hessian size (" << approximate_hessian.rows() << "x" << approximate_hessian.cols() << "), non-zeros: " << approximate_hessian.nonZeros() << std::endl;
+        std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Gradient size (" << gradient_vector.size() << "), norm: " << grad_norm << std::endl;
         // ################################
 
         // Solve system
@@ -50,7 +50,7 @@ namespace finalicp {
 
         // Debug: Log perturbation size and norm
         // ################################
-        std::cout << "[DEBUG] Iteration " << curr_iteration_ << ": Perturbation size (" << perturbation.size() << "), norm: " << perturbation.norm() << std::endl;
+        std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Perturbation size (" << perturbation.size() << "), norm: " << perturbation.norm() << std::endl;
         // ################################
 
         // Apply update
@@ -61,7 +61,7 @@ namespace finalicp {
 
         // Debug: Log updated cost
         // ################################
-        std::cout << "[DEBUG] Iteration " << curr_iteration_ << ": Updated cost: " << cost << std::endl;
+        std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Updated cost: " << cost << std::endl;
         // ################################
 
         // Print report line if verbose option enabled
