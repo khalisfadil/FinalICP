@@ -6,6 +6,8 @@
 #include <trajectory/constacc/helper.hpp>
 #include <trajectory/constvel/evaluable/jinvvelocityevaluator.hpp>
 
+#include<iostream>
+
 namespace finalicp {
     namespace traj {
         namespace const_acc {
@@ -27,9 +29,11 @@ namespace finalicp {
                 const auto Tran_kappa = getTran(kappa);
                 const auto Tran_tau = getTran(tau);
                 const auto Tran_T = getTran(T);
+
                 // Calculate interpolation values
                 omega_ = (Q_tau * Tran_kappa.transpose() * Qinv_T);
                 lambda_ = (Tran_tau - omega_ * Tran_T);
+
             }
 
             bool PoseInterpolator::active() const {

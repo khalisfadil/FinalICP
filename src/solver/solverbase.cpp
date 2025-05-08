@@ -10,6 +10,9 @@ namespace finalicp {
           params_(params) {
         state_vector_backup_ = state_vector_.lock()->clone();
         curr_cost_ = prev_cost_ = problem_.cost();
+
+        //debug
+        std::cout << "curr_cost_: "  << curr_cost_ << std::endl;
     }
 
     void SolverBase::optimize() {
@@ -36,6 +39,10 @@ namespace finalicp {
         curr_iteration_++;
         prev_cost_ = curr_cost_;
         double grad_norm = 0.0;
+
+        //debug
+        std::cout << "start linearizeSolveAndUpdate ..."  << std::endl;
+        
         bool step_success = linearizeSolveAndUpdate(curr_cost_, grad_norm);
 
         if (!step_success && fabs(grad_norm) < 1e-6) {

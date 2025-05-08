@@ -14,8 +14,7 @@ namespace finalicp{
             BlockMatrixBase();
 
             //Constructs a rectangular block matrix.
-            BlockMatrixBase(const std::vector<unsigned int>& blkRowSizes,
-                  const std::vector<unsigned int>& blkColSizes);
+            BlockMatrixBase(const std::vector<unsigned int>& blkRowSizes, const std::vector<unsigned int>& blkColSizes);
 
             //Block-size-symmetric matrix constructor, pure scalar symmetry is still optional
             BlockMatrixBase(const std::vector<unsigned int>& blkSqSizes, bool symmetric = false);
@@ -39,10 +38,9 @@ namespace finalicp{
             virtual Eigen::MatrixXd copyAt(unsigned int r, unsigned int c) const = 0;
 
         private:
-        
-            BlockMatrixIndexing indexing_;  //Manages block-wise indexing.
 
             bool symmetric_;                //True if the matrix is symmetric at the scalar level.
+            BlockMatrixIndexing indexing_;  //Manages block-wise indexing.
 
     };
 } // finalicp

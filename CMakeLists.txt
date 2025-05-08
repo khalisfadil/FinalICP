@@ -18,27 +18,33 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/robin/include
 )
 
-# Source files for the finalicp library
-set(SOURCE_FILES
+# Define source file groups
+set(MATRIXOPERATOR_SOURCES
     src/matrixoperator/matrix.cpp
     src/matrixoperator/matrixbase.cpp
     src/matrixoperator/matrixindexing.cpp
     src/matrixoperator/matrixsparse.cpp
     src/matrixoperator/vector.cpp
+)
 
+set(EVALUABLE_IMU_SOURCES
     src/evaluable/imu/accerrorevaluator.cpp
     src/evaluable/imu/dmierrorevaluator.cpp
     src/evaluable/imu/gyroerrorevaluator.cpp
     src/evaluable/imu/gyroerrorevaluatorse2.cpp
     src/evaluable/imu/imuerrorevaluator.cpp
+)
 
+set(EVALUABLE_P2P_SOURCES
     src/evaluable/p2p/p2perrorevaluator.cpp
     src/evaluable/p2p/p2planeerrorevaluator.cpp
     src/evaluable/p2p/p2planeerrorglobalperturbevaluator.cpp
     src/evaluable/p2p/velerrorevaluator.cpp
     src/evaluable/p2p/yawerrorevaluator.cpp
     src/evaluable/p2p/yawvelerrorevaluator.cpp
+)
 
+set(EVALUABLE_SE3_SOURCES
     src/evaluable/se3/composeevaluator.cpp
     src/evaluable/se3/composeinverseevaluator.cpp
     src/evaluable/se3/composevelocityevaluator.cpp
@@ -50,7 +56,9 @@ set(SOURCE_FILES
     src/evaluable/se3/se3globalperturbevaluator.cpp
     src/evaluable/se3/se3statevar.cpp
     src/evaluable/se3/se3statevarglobalperturbevaluator.cpp
+)
 
+set(PROBLEM_SOURCES
     src/problem/costterm/gyrosupercostterm.cpp
     src/problem/costterm/imusupercostterm.cpp
     src/problem/costterm/p2pconstvelsupercostterm.cpp
@@ -61,7 +69,9 @@ set(SOURCE_FILES
     src/problem/optimizationproblem.cpp
     src/problem/slidingwindowfilter.cpp
     src/problem/statevector.cpp
+)
 
+set(SOLVER_SOURCES
     src/solver/covariance.cpp
     src/solver/dogleggaussnewtonsolver.cpp
     src/solver/gausnewtonsolver.cpp
@@ -69,10 +79,14 @@ set(SOURCE_FILES
     src/solver/levmarqgaussnewtonsolver.cpp
     src/solver/linesearchgaussnewtonsolver.cpp
     src/solver/solverbase.cpp
+)
 
+set(TRAJECTORY_BSPLINE_SOURCES
     src/trajectory/bspline/interface.cpp
     src/trajectory/bspline/velocityinterpolator.cpp
+)
 
+set(TRAJECTORY_CONSTACC_SOURCES
     src/trajectory/constacc/evaluable/composecurlyhatevaluator.cpp
     src/trajectory/constacc/accelerationextrapolator.cpp
     src/trajectory/constacc/accelerationinterpolator.cpp
@@ -82,7 +96,9 @@ set(SOURCE_FILES
     src/trajectory/constacc/priorfactor.cpp
     src/trajectory/constacc/velocityextrapolator.cpp
     src/trajectory/constacc/velocityinterpolator.cpp
+)
 
+set(TRAJECTORY_CONSTVEL_SOURCES
     src/trajectory/constvel/evaluable/jinvvelocityevaluator.cpp
     src/trajectory/constvel/evaluable/jvelocityevaluator.cpp
     src/trajectory/constvel/interface.cpp
@@ -90,7 +106,9 @@ set(SOURCE_FILES
     src/trajectory/constvel/poseinterpolator.cpp
     src/trajectory/constvel/priorfactor.cpp
     src/trajectory/constvel/velocityinterpolator.cpp
+)
 
+set(THIRDPARTY_LGMATH_SOURCES
     3rdparty/lgmath/src/r3/operations.cpp
     3rdparty/lgmath/src/se3/operations.cpp
     3rdparty/lgmath/src/se3/transformations.cpp
@@ -98,6 +116,20 @@ set(SOURCE_FILES
     3rdparty/lgmath/src/commonmath.cpp
     3rdparty/lgmath/src/so3/operations.cpp
     3rdparty/lgmath/src/so3/rotations.cpp
+)
+
+# Combine all source files for the finalicp library
+set(SOURCE_FILES
+    ${MATRIXOPERATOR_SOURCES}
+    ${EVALUABLE_IMU_SOURCES}
+    ${EVALUABLE_P2P_SOURCES}
+    ${EVALUABLE_SE3_SOURCES}
+    ${PROBLEM_SOURCES}
+    ${SOLVER_SOURCES}
+    ${TRAJECTORY_BSPLINE_SOURCES}
+    ${TRAJECTORY_CONSTACC_SOURCES}
+    ${TRAJECTORY_CONSTVEL_SOURCES}
+    ${THIRDPARTY_LGMATH_SOURCES}
 )
 
 # Build the finalicp shared library
@@ -118,28 +150,43 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 # Build the test executable
-# add_executable(pattern_tests test/patterntest.cpp)
-# target_include_directories(pattern_tests
-#     PRIVATE
-#         ${GTEST_INCLUDE_DIRS}
-#         ${THIRDPARTY_INCLUDE_DIRS}
-# )
-# target_link_libraries(pattern_tests
-#     PRIVATE
-#         ${PROJECT_NAME}
-#         GTest::gtest
-#         GTest::gtest_main
-#         Threads::Threads
-# )
-
-# Build the trajectory and matrix test executable
-add_executable(const_acc_pose_interpolator_tests test/constaccposeinterpolatortest.cpp)
-target_include_directories(const_acc_pose_interpolator_tests
+add_executable(pattern_tests test/patterntest.cpp)
+target_include_directories(pattern_tests
     PRIVATE
         ${GTEST_INCLUDE_DIRS}
         ${THIRDPARTY_INCLUDE_DIRS}
 )
-target_link_libraries(const_acc_pose_interpolator_tests
+target_link_libraries(pattern_tests
+    PRIVATE
+        ${PROJECT_NAME}
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+)
+
+# Build the test executable
+add_executable(jacobian_test test/jacobiantest.cpp)
+target_include_directories(jacobian_test
+    PRIVATE
+        ${GTEST_INCLUDE_DIRS}
+        ${THIRDPARTY_INCLUDE_DIRS}
+)
+target_link_libraries(jacobian_test
+    PRIVATE
+        ${PROJECT_NAME}
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+)
+
+# Build the test executable
+add_executable(time_test test/timetest.cpp)
+target_include_directories(time_test
+    PRIVATE
+        ${GTEST_INCLUDE_DIRS}
+        ${THIRDPARTY_INCLUDE_DIRS}
+)
+target_link_libraries(time_test
     PRIVATE
         ${PROJECT_NAME}
         GTest::gtest
@@ -157,7 +204,7 @@ install(
         include/solver/
         include/trajectory/
         include/
-    DESTINATION 
+    DESTINATION
         include
     FILES_MATCHING PATTERN "*.hpp"
 )
@@ -200,5 +247,6 @@ install(
 
 # Enable testing
 enable_testing()
-# add_test(NAME PatternTests COMMAND pattern_tests)
-add_test(NAME ConstAccPoseInterpolatorTest COMMAND const_acc_pose_interpolator_tests)
+add_test(NAME PatternTests COMMAND pattern_tests)
+add_test(NAME JacobianTest COMMAND jacobian_test)
+add_test(NAME TimeTest COMMAND time_test)

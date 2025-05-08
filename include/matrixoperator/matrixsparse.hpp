@@ -8,8 +8,6 @@
 
 #include <matrixoperator/matrixbase.hpp>
 
-#include <tbb/spin_mutex.h>
-
 namespace finalicp{
     
     //A thread-safe, block-sparse matrix optimized.
@@ -32,7 +30,8 @@ namespace finalicp{
             BlockSparseMatrix();
 
             //Constructs a rectangular block-sparse matrix.
-            BlockSparseMatrix(const std::vector<unsigned int>& blkRowSizes, const std::vector<unsigned int>& blkColSizes);
+            BlockSparseMatrix(const std::vector<unsigned int>& blkRowSizes,
+                    const std::vector<unsigned int>& blkColSizes);
 
             //Constructs a symmetric block-sparse matrix.
             BlockSparseMatrix(const std::vector<unsigned int>& blkSizes, bool symmetric = false);
@@ -78,6 +77,6 @@ namespace finalicp{
             };
 
             //Column-wise storage of sparse blocks.
-            std::vector<BlockSparseColumn> cols_;       
+            std::vector<BlockSparseColumn> cols_;         
     };
 } // namespace finalicp

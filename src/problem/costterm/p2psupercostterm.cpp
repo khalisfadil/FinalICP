@@ -9,10 +9,6 @@ namespace finalicp {
     }
 
     double P2PSuperCostTerm::cost() const {
-        // Initialize accumulators (thread-safe for parallel case)
-        std::atomic<double> total_cost{0.0};
-        std::atomic<size_t> nan_count{0};
-        std::atomic<size_t> exception_count{0};
 
         // Retrieve knot states
         using namespace se3;
@@ -62,39 +58,25 @@ namespace finalicp {
                         const auto &p2p_match = p2p_matches_.at(match_idx);
                         const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
                         double match_cost = p2p_loss_func_->cost(fabs(raw_error));
-                        if (std::isnan(match_cost)) {
-                            ++nan_count;
-                        } else {
-                            cost_i += match_cost;
-                        }
+                        if (!std::isnan(match_cost)) {cost_i += match_cost;}
                     }
 
-                    if (!std::isnan(cost_i)) {
-                        cost += cost_i;
-                    }
+                    if (!std::isnan(cost_i)) {cost += cost_i;}
                 } catch (const std::exception& e) {
-                    ++exception_count;
                     std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
                 } catch (...) {
-                    ++exception_count;
                     std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
                 }
             }
 
-            if (nan_count > 0) {
-                std::cerr << "[P2PSuperCostTerm::cost] Warning: " << nan_count << " NaN cost terms ignored!" << std::endl;
-            }
-            if (exception_count > 0) {
-                std::cerr << "[P2PSuperCostTerm::cost] Warning: " << exception_count << " exceptions occurred!" << std::endl;
-            }
             return cost;
         }
 
         // Parallel processing with TBB parallel_for for large meas_times_
         tbb::global_control gc(tbb::global_control::max_allowed_parallelism, options_.num_threads);
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, meas_times_.size(), 100),
-            [&total_cost, &nan_count, &exception_count, &T1, &w1, &dw1, &xi_21, &J_21_inv_w2, &J_21_inv_curl_dw2, this](
-                const tbb::blocked_range<size_t>& range) {
+        double total_cost = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, meas_times_.size(), 100),0.0, // Initial value
+            [T1, w1, dw1, xi_21, J_21_inv_w2, J_21_inv_curl_dw2, this](const tbb::blocked_range<size_t>& range, double init) -> double {
+                double local_cost = init;
                 for (size_t i = range.begin(); i != range.end(); ++i) {
                     try {
                         const double &ts = meas_times_[i];
@@ -113,34 +95,20 @@ namespace finalicp {
                             const auto &p2p_match = p2p_matches_.at(match_idx);
                             const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
                             double match_cost = p2p_loss_func_->cost(fabs(raw_error));
-                            if (std::isnan(match_cost)) {
-                                ++nan_count; // Atomic increment
-                            } else {
-                                cost_i += match_cost;
-                            }
+                            if (!std::isnan(match_cost)) {cost_i += match_cost; }
                         }
 
-                        if (!std::isnan(cost_i)) {
-                            total_cost += cost_i; // Atomic addition
-                        }
+                        if (!std::isnan(cost_i)) {local_cost += cost_i; }
                     } catch (const std::exception& e) {
-                        ++exception_count; // Atomic increment
                         std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
                     } catch (...) {
-                        ++exception_count; // Atomic increment
                         std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
                     }
                 }
-            });
-
-        // Log warnings after parallel processing
-        if (nan_count > 0) {
-            std::cerr << "[P2PSuperCostTerm::cost] Warning: " << nan_count << " NaN cost terms ignored!" << std::endl;
-        }
-        if (exception_count > 0) {
-            std::cerr << "[P2PSuperCostTerm::cost] Warning: " << exception_count << " exceptions occurred!" << std::endl;
-        }
-
+                return local_cost;
+            },
+            std::plus<double>() // Combine partial results
+        );
         return total_cost;
     }
 
@@ -216,8 +184,6 @@ namespace finalicp {
     }
 
     void P2PSuperCostTerm::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
-        // Initialize accumulators for exceptions
-        std::atomic<size_t> exception_count{0};
 
         // Retrieve knot states
         using namespace se3;
@@ -294,10 +260,8 @@ namespace finalicp {
                     A += G.transpose() * G;
                     b -= G.transpose() * error;
                 } catch (const std::exception& e) {
-                    ++exception_count;
                     std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
                 } catch (...) {
-                    ++exception_count;
                     std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
                 }
             }
@@ -305,8 +269,7 @@ namespace finalicp {
             local_b.local() = b;
         } else {
             tbb::parallel_for(tbb::blocked_range<size_t>(0, meas_times_.size(), 100),
-                [&T1, &w1, &dw1, &xi_21, &J_21_inv_w2, &J_21_inv_curl_dw2, &Ad_T_21, &w2, &dw2, &J_21_inv, &local_A, &local_b, &exception_count, this](
-                    const tbb::blocked_range<size_t>& range) {
+                [T1, w1, dw1, xi_21, J_21_inv_w2, J_21_inv_curl_dw2, Ad_T_21, w2, dw2, J_21_inv, &local_A, &local_b, this](const tbb::blocked_range<size_t>& range) {
                     auto& A = local_A.local();
                     auto& b = local_b.local();
                     for (size_t i = range.begin(); i != range.end(); ++i) {
@@ -349,10 +312,8 @@ namespace finalicp {
                             A += G.transpose() * G;
                             b -= G.transpose() * error;
                         } catch (const std::exception& e) {
-                            ++exception_count;
                             std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] STEAM exception at index " << i << ", timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
                         } catch (...) {
-                            ++exception_count;
                             std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] STEAM exception at index " << i << ", timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
                         }
                     }
@@ -453,47 +414,67 @@ namespace finalicp {
         }
 
         // Update global Hessian and gradient for active variables
-        tbb::spin_mutex hessian_mutex, grad_mutex;
         for (size_t i = 0; i < 6; ++i) {
-            if (!active[i]) continue;
-            const auto& key1 = keys[i];
-            unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
+            try {
+                if (!active[i]) continue;
+                const auto& key1 = keys[i];
+                unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
 
-            // Update gradient
-            Eigen::MatrixXd newGradTerm = b.block<6, 1>(i * 6, 0);
-            tbb::spin_mutex::scoped_lock grad_lock(grad_mutex);
-            gradient_vector->mapAt(blkIdx1) += newGradTerm;
+                // Debug: Print key, Jacobian size, and block index
+                // ################################
+                std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", blkIdx1=" << blkIdx1 << std::endl;
+                // ################################
 
-            // Update Hessian (upper triangle)
-            for (size_t j = i; j < 6; ++j) {
-                if (!active[j]) continue;
-                const auto& key2 = keys[j];
-                unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
+                // Update gradient
+                Eigen::MatrixXd newGradTerm = b.block<6, 1>(i * 6, 0);
 
-                unsigned int row, col;
-                const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
-                    if (blkIdx1 <= blkIdx2) {
-                        row = blkIdx1;
-                        col = blkIdx2;
-                        return A.block<6, 6>(i * 6, j * 6);
-                    } else {
-                        row = blkIdx2;
-                        col = blkIdx1;
-                        return A.block<6, 6>(j * 6, i * 6);
-                    }
-                }();
+                // Debug: Print gradient term size and norm
+                // ################################
+                std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
+                // ################################
 
-                // Update Hessian with mutex protection
-                tbb::spin_mutex::scoped_lock hessian_lock(hessian_mutex);
-                BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
-                entry.data += newHessianTerm;
+                gradient_vector->mapAt(blkIdx1) += newGradTerm;
+
+                // Update Hessian (upper triangle)
+                for (size_t j = i; j < 6; ++j) {
+                    if (!active[j]) continue;
+                    const auto& key2 = keys[j];
+                    unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
+
+                    // Debug: Print inner loop key and block index
+                    // ################################
+                    std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
+                    // ################################
+
+                    unsigned int row, col;
+                    const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
+                        if (blkIdx1 <= blkIdx2) {
+                            row = blkIdx1;
+                            col = blkIdx2;
+                            return A.block<6, 6>(i * 6, j * 6);
+                        } else {
+                            row = blkIdx2;
+                            col = blkIdx1;
+                            return A.block<6, 6>(j * 6, i * 6);
+                        }
+                    }();
+
+                    // Debug: Print Hessian term size and norm
+                    // ################################
+                    std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
+                    // ################################
+
+                    // Update Hessian with mutex protection
+                    BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
+                    // omp_set_lock(&entry.lock);
+                    entry.data += newHessianTerm;
+                    // omp_unset_lock(&entry.lock);
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[P2PCVSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[P2PCVSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ": (unknown)" << std::endl;
             }
         }
-
-        // Log exceptions
-        if (exception_count > 0) {
-            std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] Warning: " << exception_count << " exceptions occurred!" << std::endl;
-        }
     }
-
 }  // namespace finalicp

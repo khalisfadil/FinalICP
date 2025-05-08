@@ -11,6 +11,7 @@ namespace finalicp {
                                                                         const Variable::ConstPtr& k2,
                                                                         const Variable::ConstPtr& k3,
                                                                         const Variable::ConstPtr& k4) {
+                std::cout << "Creating VelocityInterpolator, v1 key: " << k1->getC()->key() << ", use_count: " << k1.use_count() << std::endl;
                 return std::make_shared<VelocityInterpolator>(time, k1, k2, k3, k4);
             }
 
@@ -46,6 +47,7 @@ namespace finalicp {
             }
 
             void VelocityInterpolator::getRelatedVarKeys(KeySet& keys) const {
+                std::cout << "Getting related var keys for VelocityInterpolator" << std::endl;
                 k1_->getC()->getRelatedVarKeys(keys);
                 k2_->getC()->getRelatedVarKeys(keys);
                 k3_->getC()->getRelatedVarKeys(keys);
@@ -53,10 +55,12 @@ namespace finalicp {
             }
 
             auto VelocityInterpolator::value() const -> OutType {
+                std::cout << "Computing value for VelocityInterpolator" << std::endl;
                 return w_(0) * k1_->getC()->value() + w_(1) * k2_->getC()->value() + w_(2) * k3_->getC()->value() + w_(3) * k4_->getC()->value();
             }
 
             auto VelocityInterpolator::forward() const -> Node<OutType>::Ptr {
+                std::cout << "Forward pass for VelocityInterpolator" << std::endl;
                 const auto k1 = k1_->getC()->forward();
                 const auto k2 = k2_->getC()->forward();
                 const auto k3 = k3_->getC()->forward();
@@ -74,6 +78,7 @@ namespace finalicp {
             }
 
             void VelocityInterpolator::backward(const Eigen::MatrixXd& lhs, const Node<OutType>::Ptr& node, Jacobians& jacs) const {
+                std::cout << "Backward pass for VelocityInterpolator, lhs rows: " << lhs.rows() << ", cols: " << lhs.cols() << std::endl;
                 if (k1_->getC()->active()) {
                     const auto child = std::static_pointer_cast<Node<CType>>(node->at(0));
                     k1_->getC()->backward(lhs * w_(0), child, jacs);

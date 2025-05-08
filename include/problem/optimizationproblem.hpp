@@ -30,8 +30,7 @@ namespace finalicp {
             StateVector::Ptr getStateVector() const override;
 
             //Fill in the supplied block matrices
-            void buildGaussNewtonTerms(Eigen::SparseMatrix<double>& approximate_hessian,
-                             Eigen::VectorXd& gradient_vector) const override;
+            void buildGaussNewtonTerms(Eigen::SparseMatrix<double>& approximate_hessian,  Eigen::VectorXd& gradient_vector) const override;
 
         private:
 

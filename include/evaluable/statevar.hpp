@@ -17,6 +17,8 @@ namespace finalicp{
             StateVarBase(const unsigned int& perturb_dim, const std::string& name = "")
                 : perturb_dim_(perturb_dim), name_(name) {}
 
+            virtual ~StateVarBase() = default;
+
             //Returns the name of the state variable.
             std::string name() const { return name_; }
 

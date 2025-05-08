@@ -25,7 +25,7 @@ namespace finalicp {
             //Solves the Gauss-Newton system: `Hessian * x = gradient`
             Eigen::VectorXd solveGaussNewton(const Eigen::SparseMatrix<double>& approximate_hessian, const Eigen::VectorXd& gradient_vector);
 
-         private:
+        private:
 
             using SolverType = Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Upper, Eigen::NaturalOrdering<int>>;
 

@@ -208,8 +208,6 @@ namespace finalicp {
     }
 
     void PreintIMUCostTerm::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
-        // Initialize accumulators for exceptions
-        std::atomic<size_t> exception_count{0};
 
         // Retrieve knot states
         using namespace se3;
@@ -248,10 +246,8 @@ namespace finalicp {
             local_A.local() = A;
             local_c.local() = c;
         } catch (const std::exception& e) {
-            ++exception_count;
             std::cerr << "[PreintIMUCostTerm::buildGaussNewtonTerms] exception: " << e.what() << std::endl;
         } catch (...) {
-            ++exception_count;
             std::cerr << "[PreintIMUCostTerm::buildGaussNewtonTerms] exception: (unknown)" << std::endl;
         }
 
@@ -268,6 +264,7 @@ namespace finalicp {
         active.push_back(bias_->active());
 
         std::vector<StateKey> keys;
+
         if (active[0]) {
             const auto T1node = std::static_pointer_cast<Node<PoseType>>(T1_);
             Jacobians jacs;
@@ -335,70 +332,91 @@ namespace finalicp {
         }
 
         // Update global Hessian and gradient for active variables
-        tbb::spin_mutex hessian_mutex, grad_mutex;
         std::vector<int> blk_indices = {0, 6, 9, 15, 18};
         std::vector<int> blk_sizes = {6, 3, 6, 3, 6};
         for (size_t i = 0; i < 5; ++i) {
-            if (!active[i]) continue;
-            const auto& key1 = keys[i];
-            unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
+            try {
+                if (!active[i]) continue;
+                const auto& key1 = keys[i];
+                unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
 
-            // Update gradient
-            const Eigen::MatrixXd newGradTerm = [&]() -> Eigen::MatrixXd {
-                if (blk_sizes[i] == 3) {
-                    return c.block<3, 1>(blk_indices[i], 0);
-                } else {
-                    return c.block<6, 1>(blk_indices[i], 0);
-                }
-            }();
-            tbb::spin_mutex::scoped_lock grad_lock(grad_mutex);
-            gradient_vector->mapAt(blkIdx1) += newGradTerm;
+                // Debug: Print key, Jacobian size, and block index
+                // ################################
+                std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", blkIdx1=" << blkIdx1 << std::endl;
+                // ################################
 
-            // Update Hessian (upper triangle)
-            for (size_t j = i; j < 5; ++j) {
-                if (!active[j]) continue;
-                const auto& key2 = keys[j];
-                unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
-
-                unsigned int row, col;
-                const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
-                    if (blkIdx1 <= blkIdx2) {
-                        row = blkIdx1;
-                        col = blkIdx2;
-                        if (blk_sizes[i] == 3 && blk_sizes[j] == 3) {
-                            return A.block<3, 3>(blk_indices[i], blk_indices[j]);
-                        } else if (blk_sizes[i] == 3 && blk_sizes[j] == 6) {
-                            return A.block<3, 6>(blk_indices[i], blk_indices[j]);
-                        } else if (blk_sizes[i] == 6 && blk_sizes[j] == 3) {
-                            return A.block<6, 3>(blk_indices[i], blk_indices[j]);
-                        } else {
-                            return A.block<6, 6>(blk_indices[i], blk_indices[j]);
-                        }
+                // Update gradient
+                const Eigen::MatrixXd newGradTerm = [&]() -> Eigen::MatrixXd {
+                    if (blk_sizes[i] == 3) {
+                        return c.block<3, 1>(blk_indices[i], 0);
                     } else {
-                        row = blkIdx2;
-                        col = blkIdx1;
-                        if (blk_sizes[i] == 3 && blk_sizes[j] == 3) {
-                            return A.block<3, 3>(blk_indices[j], blk_indices[i]).transpose();
-                        } else if (blk_sizes[i] == 3 && blk_sizes[j] == 6) {
-                            return A.block<6, 3>(blk_indices[j], blk_indices[i]).transpose();
-                        } else if (blk_sizes[i] == 6 && blk_sizes[j] == 3) {
-                            return A.block<3, 6>(blk_indices[j], blk_indices[i]).transpose();
-                        } else {
-                            return A.block<6, 6>(blk_indices[j], blk_indices[i]).transpose();
-                        }
+                        return c.block<6, 1>(blk_indices[i], 0);
                     }
                 }();
 
-                // Update Hessian with mutex protection
-                tbb::spin_mutex::scoped_lock hessian_lock(hessian_mutex);
-                BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
-                entry.data += newHessianTerm;
-            }
-        }
+                // Debug: Print gradient term size and norm
+                // ################################
+                std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
+                // ################################
 
-        // Log exceptions
-        if (exception_count > 0) {
-            std::cerr << "[PreintIMUCostTerm::buildGaussNewtonTerms] Warning: " << exception_count << " exceptions occurred!" << std::endl;
+                gradient_vector->mapAt(blkIdx1) += newGradTerm;
+
+                // Update Hessian (upper triangle)
+                for (size_t j = i; j < 5; ++j) {
+                    if (!active[j]) continue;
+                    const auto& key2 = keys[j];
+                    unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
+
+                    // Debug: Print inner loop key and block index
+                    // ################################
+                    std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
+                    // ################################
+
+                    unsigned int row, col;
+                    const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
+                        if (blkIdx1 <= blkIdx2) {
+                            row = blkIdx1;
+                            col = blkIdx2;
+                            if (blk_sizes[i] == 3 && blk_sizes[j] == 3) {
+                                return A.block<3, 3>(blk_indices[i], blk_indices[j]);
+                            } else if (blk_sizes[i] == 3 && blk_sizes[j] == 6) {
+                                return A.block<3, 6>(blk_indices[i], blk_indices[j]);
+                            } else if (blk_sizes[i] == 6 && blk_sizes[j] == 3) {
+                                return A.block<6, 3>(blk_indices[i], blk_indices[j]);
+                            } else {
+                                return A.block<6, 6>(blk_indices[i], blk_indices[j]);
+                            }
+                        } else {
+                            row = blkIdx2;
+                            col = blkIdx1;
+                            if (blk_sizes[i] == 3 && blk_sizes[j] == 3) {
+                                return A.block<3, 3>(blk_indices[j], blk_indices[i]).transpose();
+                            } else if (blk_sizes[i] == 3 && blk_sizes[j] == 6) {
+                                return A.block<6, 3>(blk_indices[j], blk_indices[i]).transpose();
+                            } else if (blk_sizes[i] == 6 && blk_sizes[j] == 3) {
+                                return A.block<3, 6>(blk_indices[j], blk_indices[i]).transpose();
+                            } else {
+                                return A.block<6, 6>(blk_indices[j], blk_indices[i]).transpose();
+                            }
+                        }
+                    }();
+
+                    // Debug: Print Hessian term size and norm
+                    // ################################
+                    std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
+                    // ################################
+
+                    // Update Hessian with mutex protection
+                    BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
+                    // omp_set_lock(&entry.lock);
+                    entry.data += newHessianTerm;
+                    // omp_unset_lock(&entry.lock);
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[P2PCVSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[P2PCVSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ": (unknown)" << std::endl;
+            }
         }
     }
 }  // namespace finalicp

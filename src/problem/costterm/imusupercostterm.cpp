@@ -14,10 +14,6 @@ namespace finalicp {
     }
 
     double IMUSuperCostTerm::cost() const {
-        // Initialize accumulators (thread-safe for parallel case)
-        std::atomic<double> total_cost{0.0};
-        std::atomic<size_t> nan_count{0};
-        std::atomic<size_t> exception_count{0};
 
         // Retrieve knot states
         using namespace se3;
@@ -113,49 +109,28 @@ namespace finalicp {
                     // Evaluate cost
                     double cost_i = 0.0;
                     if (options_.use_accel) {
-                        double acc_cost = acc_loss_func_->cost(
-                            acc_noise_model_->getWhitenedErrorNorm(raw_error_acc));
-                        if (std::isnan(acc_cost)) {
-                            ++nan_count;
-                        } else {
-                            cost_i += acc_cost;
-                        }
+                        double acc_cost = acc_loss_func_->cost(acc_noise_model_->getWhitenedErrorNorm(raw_error_acc));
+                        if (!std::isnan(acc_cost)) {cost_i += acc_cost; }
                     }
-                    double gyro_cost = gyro_loss_func_->cost(
-                        gyro_noise_model_->getWhitenedErrorNorm(raw_error_gyro));
-                    if (std::isnan(gyro_cost)) {
-                        ++nan_count;
-                    } else {
-                        cost_i += gyro_cost;
-                    }
+                    double gyro_cost = gyro_loss_func_->cost(gyro_noise_model_->getWhitenedErrorNorm(raw_error_gyro));
+                    if (!std::isnan(gyro_cost)) {cost_i += gyro_cost; }
 
-                    if (!std::isnan(cost_i)) {
-                        cost += cost_i;
-                    }
+                    if (!std::isnan(cost_i)) {cost += cost_i; }
 
                 } catch (const std::exception& e) {
-                    ++exception_count;
                     std::cerr << "[IMUSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
                 } catch (...) {
-                    ++exception_count;
                     std::cerr << "[IMUSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
                 }
-            }
-
-            if (nan_count > 0) {
-                std::cerr << "[IMUSuperCostTerm::cost] Warning: " << nan_count << " NaN cost terms ignored!" << std::endl;
-            }
-            if (exception_count > 0) {
-                std::cerr << "[IMUSuperCostTerm::cost] Warning: " << exception_count << " exceptions occurred!" << std::endl;
             }
             return cost;
         }
 
         // Parallel processing with TBB parallel_for for large imu_data_vec_
         tbb::global_control gc(tbb::global_control::max_allowed_parallelism, options_.num_threads);
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, imu_data_vec_.size(), 100),
-            [&total_cost, &nan_count, &exception_count, &T1, &w1, &dw1, &xi_21, &J_21_inv_w2,
-            &J_21_inv_curl_dw2, &b1, &b2, &T_mi_1, &T_mi_2, this](const tbb::blocked_range<size_t>& range) {
+        double total_cost = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, imu_data_vec_.size(), 100),0.0, // Initial value
+            [this, T1, w1, dw1, xi_21, J_21_inv_w2,J_21_inv_curl_dw2, b1, b2, T_mi_1, T_mi_2](const tbb::blocked_range<size_t>& range, double init) -> double {
+                double local_cost = init;
                 for (size_t i = range.begin(); i != range.end(); ++i) {
                     try {
                         const double &ts = imu_data_vec_[i].timestamp;
@@ -164,21 +139,9 @@ namespace finalicp {
                         // Pose, velocity, acceleration interpolation
                         const auto &omega = interp_mats_.at(ts).first;
                         const auto &lambda = interp_mats_.at(ts).second;
-                        const Eigen::Matrix<double, 6, 1> xi_i1 =
-                            lambda(0, 1) * w1 + lambda(0, 2) * dw1 +
-                            omega(0, 0) * xi_21 +
-                            omega(0, 1) * J_21_inv_w2 +
-                            omega(0, 2) * J_21_inv_curl_dw2;
-                        const Eigen::Matrix<double, 6, 1> xi_j1 =
-                            lambda(1, 1) * w1 + lambda(1, 2) * dw1 +
-                            omega(1, 0) * xi_21 +
-                            omega(1, 1) * J_21_inv_w2 +
-                            omega(1, 2) * J_21_inv_curl_dw2;
-                        const Eigen::Matrix<double, 6, 1> xi_k1 =
-                            lambda(2, 1) * w1 + lambda(2, 2) * dw1 +
-                            omega(2, 0) * xi_21 +
-                            omega(2, 1) * J_21_inv_w2 +
-                            omega(2, 2) * J_21_inv_curl_dw2;
+                        const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + lambda(0, 2) * dw1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2 + omega(0, 2) * J_21_inv_curl_dw2;
+                        const Eigen::Matrix<double, 6, 1> xi_j1 = lambda(1, 1) * w1 + lambda(1, 2) * dw1 + omega(1, 0) * xi_21 + omega(1, 1) * J_21_inv_w2 + omega(1, 2) * J_21_inv_curl_dw2;
+                        const Eigen::Matrix<double, 6, 1> xi_k1 = lambda(2, 1) * w1 + lambda(2, 2) * dw1 + omega(2, 0) * xi_21 + omega(2, 1) * J_21_inv_w2 + omega(2, 2) * J_21_inv_curl_dw2;
 
                         // Interpolated pose
                         const math::se3::Transformation T_i1(xi_i1);
@@ -227,45 +190,24 @@ namespace finalicp {
                         // Evaluate cost
                         double cost_i = 0.0;
                         if (options_.use_accel) {
-                            double acc_cost = acc_loss_func_->cost(
-                                acc_noise_model_->getWhitenedErrorNorm(raw_error_acc));
-                            if (std::isnan(acc_cost)) {
-                                ++nan_count; // Atomic increment
-                            } else {
-                                cost_i += acc_cost;
-                            }
+                            double acc_cost = acc_loss_func_->cost(acc_noise_model_->getWhitenedErrorNorm(raw_error_acc));
+                            if (!std::isnan(acc_cost)) {cost_i += acc_cost; }
                         }
-                        double gyro_cost = gyro_loss_func_->cost(
-                            gyro_noise_model_->getWhitenedErrorNorm(raw_error_gyro));
-                        if (std::isnan(gyro_cost)) {
-                            ++nan_count; // Atomic increment
-                        } else {
-                            cost_i += gyro_cost;
-                        }
+                        double gyro_cost = gyro_loss_func_->cost(gyro_noise_model_->getWhitenedErrorNorm(raw_error_gyro));
+                        if (!std::isnan(gyro_cost)) {cost_i += gyro_cost; }
 
-                        if (!std::isnan(cost_i)) {
-                            total_cost += cost_i; // Atomic addition
-                        }
+                        if (!std::isnan(cost_i)) {local_cost += cost_i; }
 
                     } catch (const std::exception& e) {
-                        ++exception_count; // Atomic increment
-                        std::cerr << "[IMUSuperCostTerm::cost] STEAM exception at index " << i
-                                << ", timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
+                        std::cerr << "[IMUSuperCostTerm::cost] STEAM exception at index " << i << ", timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
                     } catch (...) {
-                        ++exception_count; // Atomic increment
-                        std::cerr << "[IMUSuperCostTerm::cost] STEAM exception at index " << i
-                                << ", timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
+                        std::cerr << "[IMUSuperCostTerm::cost] STEAM exception at index " << i << ", timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
                     }
                 }
-            });
-
-        // Log warnings after parallel processing
-        if (nan_count > 0) {
-            std::cerr << "[IMUSuperCostTerm::cost] Warning: " << nan_count << " NaN cost terms ignored!" << std::endl;
-        }
-        if (exception_count > 0) {
-            std::cerr << "[IMUSuperCostTerm::cost] Warning: " << exception_count << " exceptions occurred!" << std::endl;
-        }
+                return local_cost; // Returns partial sum to TBB, not exiting cost
+            },
+            std::plus<double>() // Combine partial results
+        );
 
         return total_cost;
     }
@@ -327,8 +269,6 @@ namespace finalicp {
     }
 
     void IMUSuperCostTerm::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
-        // Initialize accumulators for exceptions
-        std::atomic<size_t> exception_count{0};
         
         // Retrieve knot states
         using namespace se3;
@@ -513,10 +453,8 @@ namespace finalicp {
                     A += G.transpose() * G;
                     b += (-1) * G.transpose() * error;
                 } catch (const std::exception& e) {
-                    ++exception_count;
                     std::cerr << "[IMUSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
                 } catch (...) {
-                    ++exception_count;
                     std::cerr << "[IMUSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
                 }
             }
@@ -524,7 +462,8 @@ namespace finalicp {
             local_b.local() = b;
         } else {
             tbb::parallel_for(tbb::blocked_range<size_t>(0, imu_data_vec_.size(), 100),
-                [&, this](const tbb::blocked_range<size_t>& range) {
+                [&local_A, &local_b, w1, dw1, xi_21, J_21_inv_w2, J_21_inv_curl_dw2, T1, 
+                b1, b2, T_mi_1, T_mi_2, J_21_inv, w2, dw2, Ad_T_21, this](const tbb::blocked_range<size_t>& range) {
                     auto& A = local_A.local();
                     auto& b = local_b.local();
                     for (size_t i = range.begin(); i != range.end(); ++i) {
@@ -667,10 +606,8 @@ namespace finalicp {
                             A += G.transpose() * G;
                             b += (-1) * G.transpose() * error;
                         } catch (const std::exception& e) {
-                            ++exception_count;
                             std::cerr << "[IMUSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
                         } catch (...) {
-                            ++exception_count;
                             std::cerr << "[IMUSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
                         }
                     }
@@ -827,46 +764,68 @@ namespace finalicp {
         }
 
         // Update global Hessian and gradient for active variables
-        tbb::spin_mutex grad_mutex, hessian_mutex;
         for (size_t i = 0; i < 10; ++i) {
-            if (!active[i]) continue;
-            const auto& key1 = keys[i];
-            unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
+            try {
+                if (!active[i]) continue;
+                const auto& key1 = keys[i];
+                unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
 
-            // Update gradient
-            Eigen::MatrixXd newGradTerm = b.block<6, 1>(i * 6, 0);
-            tbb::spin_mutex::scoped_lock grad_lock(grad_mutex);
-            gradient_vector->mapAt(blkIdx1) += newGradTerm;
+                // Debug: Print key, Jacobian size, and block index
+                // ################################
+                std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", blkIdx1=" << blkIdx1 << std::endl;
+                // ################################
 
-            // Update Hessian (upper triangle)
-            for (size_t j = i; j < 10; ++j) {
-                if (!active[j]) continue;
-                const auto& key2 = keys[j];
-                unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
+                // Update gradient
+                Eigen::MatrixXd newGradTerm = b.block<6, 1>(i * 6, 0);
 
-                unsigned int row, col;
-                const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
-                    if (blkIdx1 <= blkIdx2) {
-                        row = blkIdx1;
-                        col = blkIdx2;
-                        return A.block<6, 6>(i * 6, j * 6);
-                    } else {
-                        row = blkIdx2;
-                        col = blkIdx1;
-                        return A.block<6, 6>(j * 6, i * 6);
-                    }
-                }();
+                // Debug: Print gradient term size and norm
+                // ################################
+                std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
+                // ################################
 
-                // Update Hessian with mutex protection
-                tbb::spin_mutex::scoped_lock hessian_lock(hessian_mutex);
-                BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
-                entry.data += newHessianTerm;
+                gradient_vector->mapAt(blkIdx1) += newGradTerm;
+
+                // Update Hessian (upper triangle)
+                for (size_t j = i; j < 10; ++j) {
+
+                    if (!active[j]) continue;
+                    const auto& key2 = keys[j];
+                    unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
+
+                    // Debug: Print inner loop key and block index
+                    // ################################
+                    std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
+                    // ################################
+
+                    unsigned int row, col;
+                    const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
+                        if (blkIdx1 <= blkIdx2) {
+                            row = blkIdx1;
+                            col = blkIdx2;
+                            return A.block<6, 6>(i * 6, j * 6);
+                        } else {
+                            row = blkIdx2;
+                            col = blkIdx1;
+                            return A.block<6, 6>(j * 6, i * 6);
+                        }
+                    }();
+
+                    // Debug: Print Hessian term size and norm
+                    // ################################
+                    std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
+                    // ################################
+                    
+                    BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
+
+                    // omp_set_lock(&entry.lock);
+                    entry.data += newHessianTerm;
+                    // omp_unset_lock(&entry.lock);
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[IMUSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[IMUSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ": (unknown)" << std::endl;
             }
-        }
-
-        // Log exceptions
-        if (exception_count > 0) {
-            std::cerr << "[IMUSuperCostTerm::buildGaussNewtonTerms] Warning: " << exception_count << " exceptions occurred!" << std::endl;
         }
     }
 }  // namespace finalicp

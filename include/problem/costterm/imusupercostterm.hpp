@@ -12,6 +12,7 @@
 
 #include <tbb/tbb.h>
 #include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
 #include <tbb/blocked_range.h>
 #include <tbb/global_control.h>
 #include <tbb/spin_mutex.h>

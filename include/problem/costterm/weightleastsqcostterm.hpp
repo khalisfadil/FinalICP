@@ -8,11 +8,6 @@
 #include <problem/lossfunc/baselossfunc.hpp>
 #include <problem/noisemodel/basenoisemodel.hpp>
 
-#include <tbb/tbb.h>
-#include <tbb/parallel_for.h>
-#include <tbb/blocked_range.h>
-#include <tbb/spin_mutex.h>
-
 #include <iostream>
 
 namespace finalicp {
@@ -75,11 +70,8 @@ namespace finalicp {
     }
 
     template <int DIM>
-    void WeightedLeastSqCostTerm<DIM>::buildGaussNewtonTerms(
-            const StateVector &state_vec, BlockSparseMatrix *approximate_hessian,
-            BlockVector *gradient_vector) const {
+    void WeightedLeastSqCostTerm<DIM>::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
 
-        // Compute weighted and whitened errors and Jacobians
         Jacobians jacobian_container;
         ErrorType error = this->evalWeightedAndWhitened(jacobian_container);
         const auto& jacobians = jacobian_container.get();
@@ -87,93 +79,142 @@ namespace finalicp {
         // Get map keys into a vector for sorting
         std::vector<StateKey> keys;
         keys.reserve(jacobians.size());
-        std::transform(jacobians.begin(), jacobians.end(), std::back_inserter(keys),
-                        [](const auto &pair) { return pair.first; });
+        std::transform(jacobians.begin(), jacobians.end(), std::back_inserter(keys),[](const auto &pair) { return pair.first; });
 
-        // Track exceptions for thread-safe logging
-        std::atomic<size_t> exception_count{0};
+        // Debug: Print number of keys and their values
+        // ################################
+        std::cout << "[DEBUG] Number of Jacobian keys: " << keys.size() << std::endl;
+        for (const auto& key : keys) {
+            std::cout << "[DEBUG] Processing key: " << key << std::endl;
+        }
+        // ################################
 
-        // Parallelize outer loop over Jacobians
-        tbb::spin_mutex hessian_mutex, grad_mutex;
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, keys.size(), 1),
-            [&](const tbb::blocked_range<size_t>& range) {
-                for (size_t i = range.begin(); i != range.end(); ++i) {
-                    try {
-                        // Access Jacobian and block index
-                        const auto& key1 = keys.at(i);
-                        const auto& jac1 = jacobians.at(key1); // at for map safety
-                        unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
+        for (size_t i = 0; i < keys.size(); ++i) {
+            try {
+                // Access Jacobian and block index
+                const auto& key1 = keys.at(i);
+                const auto& jac1 = jacobians.at(key1); // at for map safety
+                unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
 
-                        // Compute gradient contribution
-                        Eigen::MatrixXd newGradTerm = (-1) * jac1.transpose() * error;
+                // Debug: Print key, Jacobian size, and block index
+                // ################################
+                std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", Jacobian rows=" << jac1.rows() << ", cols=" << jac1.cols() << ", blkIdx1=" << blkIdx1 << std::endl;
+                // ################################
 
-                        // Update gradient (thread-safe with mutex)
-                        static tbb::spin_mutex grad_mutex;
-                        tbb::spin_mutex::scoped_lock grad_lock(grad_mutex);
-                        gradient_vector->mapAt(blkIdx1) += newGradTerm;
+                // Compute gradient contribution
+                Eigen::MatrixXd newGradTerm = (-1) * jac1.transpose() * error;
 
-                        // Inner loop for Hessian (upper triangle)
-                        for (size_t j = i; j < keys.size(); ++j) {
-                            const auto& key2 = keys.at(j);
-                            const auto& jac2 = jacobians.at(key2);
-                            unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
+                // Debug: Print gradient term size and norm
+                // ################################
+                 std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
+                // ################################
 
-                            // Compute Hessian contribution
-                            unsigned int row, col;
-                            const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
-                                if (blkIdx1 <= blkIdx2) {
-                                    row = blkIdx1;
-                                    col = blkIdx2;
-                                    return jac1.transpose() * jac2;
-                                } else {
-                                    row = blkIdx2;
-                                    col = blkIdx1;
-                                    return jac2.transpose() * jac1;
-                                }
-                            }();
+                // Update gradient 
+                gradient_vector->mapAt(blkIdx1) += newGradTerm;
 
-                            // Update Hessian (thread-safe with BlockRowEntry lock)
-                            tbb::spin_mutex::scoped_lock hessian_lock(hessian_mutex);
-                            BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
-                            entry.data += newHessianTerm;
-                            // BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
-                            // tbb::spin_mutex::scoped_lock entry_lock(entry.lock);
-                            // entry.data += newHessianTerm;
+                // Inner loop for Hessian (upper triangle)
+                for (size_t j = i; j < keys.size(); ++j) {
+                    const auto& key2 = keys.at(j);
+                    const auto& jac2 = jacobians.at(key2);
+                    unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
+
+                    // Debug: Print inner loop key and block index
+                    // ################################
+                    std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
+                    // ################################
+
+                    // Compute Hessian contribution
+                    unsigned int row, col;
+                    const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
+                        if (blkIdx1 <= blkIdx2) {
+                            row = blkIdx1;
+                            col = blkIdx2;
+                            return jac1.transpose() * jac2;
+                        } else {
+                            row = blkIdx2;
+                            col = blkIdx1;
+                            return jac2.transpose() * jac1;
                         }
-                    } catch (const std::exception& e) {
-                        ++exception_count;
-                        std::cerr << "[WeightedLeastSqCostTerm::buildGaussNewtonTerms] exception at index " << i << ": " << e.what() << std::endl;
-                    } catch (...) {
-                        ++exception_count;
-                        std::cerr << "[WeightedLeastSqCostTerm::buildGaussNewtonTerms] exception at index " << i << ": (unknown)" << std::endl;
-                    }
+                    }();
+
+                    // Debug: Print Hessian term size and norm
+                    // ################################
+                    std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
+                    // ################################
+
+                    BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
+                    // omp_set_lock(&entry.lock);
+                    entry.data += newHessianTerm;
+                    // omp_unset_lock(&entry.lock);
                 }
+            } catch (const std::exception& e) {
+                std::cerr << "[WeightedLeastSqCostTerm::buildGaussNewtonTerms] exception at index " << i << ": " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[WeightedLeastSqCostTerm::buildGaussNewtonTerms] exception at index " << i << ": (unknown)" << std::endl;
             }
-        );
+        }
     }
 
     template <int DIM>
-    auto WeightedLeastSqCostTerm<DIM>::evalWeightedAndWhitened(
-        Jacobians &jacobian_contaner) const -> ErrorType {
-        // initializes jacobian array
-        jacobian_contaner.clear();
+    auto WeightedLeastSqCostTerm<DIM>::evalWeightedAndWhitened(Jacobians &jacobian_container) const -> ErrorType {
+        // Initializes jacobian array
+        jacobian_container.clear();
+
+        // Debug: Print Hessian term size and norm
+        // ################################
+        std::cout << "[DEBUG] Cleared Jacobian container" << std::endl;
+        // ################################
 
         // Get raw error and Jacobians
-        ErrorType raw_error = error_function_->evaluate(
-            noise_model_->getSqrtInformation(), jacobian_contaner);
+        ErrorType raw_error = error_function_->evaluate(noise_model_->getSqrtInformation(), jacobian_container);
+
+        // Debug: Print Hessian term size and norm
+        // ################################
+        std::cout << "[DEBUG] Raw error norm: " << raw_error.norm() << ", size: (" << raw_error.rows() << ", " << raw_error.cols() << ")" << std::endl;
+        std::cout << "[DEBUG] Number of Jacobians after evaluation: " << jacobian_container.get().size() << std::endl;
+        // ################################
 
         // Get whitened error vector
         ErrorType white_error = noise_model_->whitenError(raw_error);
 
+        // Debug: Print Hessian term size and norm
+        // ################################
+        std::cout << "[DEBUG] Whitened error norm: " << white_error.norm() << ", size: (" << white_error.rows() << ", " << white_error.cols() << ")" << std::endl;
+        // ################################
+
         // Get weight from loss function
         double sqrt_w = sqrt(loss_function_->weight(white_error.norm()));
 
-        // Weight the white jacobians
-        auto &jacobians = jacobian_contaner.get();
-        for (auto &entry : jacobians) entry.second *= sqrt_w;
+        // Debug: Print Hessian term size and norm
+        // ################################
+        std::cout << "[DEBUG] Sqrt weight (sqrt_w): " << sqrt_w << std::endl;
+        // ################################
+
+        // Weight the white Jacobians
+        auto &jacobians = jacobian_container.get();
+        for (auto &entry : jacobians) {
+
+            // Debug: Print Hessian term size and norm
+            // ################################
+            std::cout << "[DEBUG] Weighting Jacobian for key: " << entry.first << ", original norm: " << entry.second.norm();
+            // ################################
+
+            entry.second *= sqrt_w;
+
+            // Debug: Print Hessian term size and norm
+            // ################################
+            std::cout << ", new norm: " << entry.second.norm() << std::endl;
+            // ################################
+        }
 
         // Weight the error and return
-        return sqrt_w * white_error;
-    }
+        ErrorType weighted_error = sqrt_w * white_error;
 
+        // Debug: Print Hessian term size and norm
+        // ################################
+        std::cout << "[DEBUG] Weighted error norm: " << weighted_error.norm() << ", size: (" << weighted_error.rows() << ", " << weighted_error.cols() << ")" << std::endl;
+        // ################################
+
+        return weighted_error;
+    }
 }  // namespace finalicp

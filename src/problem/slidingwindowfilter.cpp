@@ -8,8 +8,7 @@ namespace finalicp {
     // Constructor
     // -----------------------------------------------------------------------------
 
-    auto SlidingWindowFilter::MakeShared(unsigned int num_threads)
-            -> SlidingWindowFilter::Ptr {
+    auto SlidingWindowFilter::MakeShared(unsigned int num_threads)-> SlidingWindowFilter::Ptr {
         return std::make_shared<SlidingWindowFilter>(num_threads);
     }
 
@@ -26,12 +25,10 @@ namespace finalicp {
 
     void SlidingWindowFilter::addStateVariable(const std::vector<StateVarBase::Ptr>& variables) {
         for (const auto& var : variables) {
-            const auto key = var->key();
-            if (!variables_.try_emplace(key, var, false).second) {
-                throw std::runtime_error("[SlidingWindowFilter::addStateVariable] duplicated variable key");
-            }
-            variable_queue_.push_back(key);
-            related_var_keys_.try_emplace(key, KeySet{key});
+            const auto res = variables_.try_emplace(var->key(), var, false);
+            if (!res.second) throw std::runtime_error("duplicated variable key");
+            variable_queue_.emplace_back(var->key());
+            related_var_keys_.try_emplace(var->key(), KeySet{var->key()});
         }
     }
 
@@ -54,8 +51,9 @@ namespace finalicp {
         // Process variable queue and identify fixed variables
         StateVector fixed_state_vector;
         StateVector state_vector;
+
         std::vector<StateKey> to_remove;
-        to_remove.reserve(variable_queue_.size()); // Pre-allocate to avoid reallocations
+
         bool fixed = true;
         for (const auto& key : variable_queue_) {
             const auto& var = variables_.at(key);
@@ -64,7 +62,7 @@ namespace finalicp {
                             [this](const StateKey& k) { return variables_.at(k).marginalize; })) {
                 if (!fixed) throw std::runtime_error("[SlidingWindowFilter::marginalizeVariable] fixed variables must be at the front");
                 fixed_state_vector.addStateVariable(var.variable);
-                to_remove.push_back(key);
+                to_remove.emplace_back(key);
             } else {
                 fixed = false;
             }
@@ -74,8 +72,6 @@ namespace finalicp {
         // Process cost terms: sequential for small sizes, parallel for large
         tbb::concurrent_vector<BaseCostTerm::ConstPtr> active_cost_terms;
         active_cost_terms.reserve(cost_terms_.size()); // Pre-allocate for efficiency
-        using KeySet = BaseCostTerm::KeySet; // std::unordered_set<StateKey, StateKeyHash>
-        KeySet keys; // Temporary set to store keys of variables related to a cost term
 
         // Prepare matrices
         const auto state_sizes = state_vector.getStateBlockSizes();
@@ -83,26 +79,25 @@ namespace finalicp {
         BlockVector b_(state_sizes);
 
         if (cost_terms_.size() < 100) { // Sequential for small sizes
-            for (const auto& term : cost_terms_) {
-                keys.clear(); // Reset to store keys for current cost term
-                term->getRelatedVarKeys(keys); // Populate with StateKey values of related variables
-                if (std::all_of(keys.begin(), keys.end(),
-                                [this](const StateKey& k) { return variables_.at(k).marginalize; })) {
-                    term->buildGaussNewtonTerms(state_vector, &A_, &b_);
+            for (unsigned int c = 0; c < cost_terms_.size(); c++) {
+                KeySet keys;
+                cost_terms_.at(c)->getRelatedVarKeys(keys);
+                if (std::all_of(keys.begin(), keys.end(), [this](const StateKey& k) { 
+                    return variables_.at(k).marginalize; })) {
+                    cost_terms_.at(c)->buildGaussNewtonTerms(state_vector, &A_, &b_);
                 } else {
-                    active_cost_terms.push_back(term);
+                    active_cost_terms.push_back(cost_terms_.at(c));
                 }
             }
         } else { // Parallel with TBB for large sizes
             tbb::global_control gc(tbb::global_control::max_allowed_parallelism, num_threads_);
             tbb::parallel_for(tbb::blocked_range<size_t>(0, cost_terms_.size(), 100),
                 [&](const tbb::blocked_range<size_t>& range) {
-                    KeySet local_keys; // Thread-local set for related variable keys
                     for (size_t c = range.begin(); c != range.end(); ++c) {
-                        local_keys.clear(); // Reset for current cost term
+                        KeySet local_keys;
                         cost_terms_.at(c)->getRelatedVarKeys(local_keys); // Populate with StateKey values
-                        if (std::all_of(local_keys.begin(), local_keys.end(),
-                                        [this](const StateKey& k) { return variables_.at(k).marginalize; })) {
+                        if (std::all_of(local_keys.begin(), local_keys.end(),[this](const StateKey& k) { 
+                            return variables_.at(k).marginalize; })) {
                             cost_terms_.at(c)->buildGaussNewtonTerms(state_vector, &A_, &b_);
                         } else {
                             active_cost_terms.push_back(cost_terms_.at(c));
@@ -177,70 +172,52 @@ namespace finalicp {
     // -----------------------------------------------------------------------------
 
     double SlidingWindowFilter::cost() const {
-        // Initialize accumulators (thread-safe for parallel case)
-        std::atomic<double> total_cost{0.0};
-        std::atomic<size_t> nan_count{0};
-        std::atomic<size_t> exception_count{0};
 
         // Sequential processing for small cost_terms_ to avoid parallel overhead
         if (cost_terms_.size() < 100) { // Tune threshold via profiling
             double cost = 0;
-           for (size_t i = 0; i < cost_terms_.size(); i++) {
+            for (size_t i = 0; i < cost_terms_.size(); i++) {
                 try {
                     double cost_i = cost_terms_.at(i)->cost();
                     if (std::isnan(cost_i)) {
-                        ++nan_count;
+                        std::cerr << "[SlidingWindowFilter::cost] NaN cost term is ignored! " << std::endl;
                     } else {
                         cost += cost_i;
                     }
                 } catch (const std::exception& e) {
-                    ++exception_count;
                     std::cerr << "[SlidingWindowFilter::cost] exception in cost term: " << e.what() << std::endl;
                 } catch (...) {
-                    ++exception_count;
                     std::cerr << "[SlidingWindowFilter::cost] exception in cost term: (unknown)" << std::endl;
                 }
-            }
-            if (nan_count > 0) {
-                std::cerr << "[SlidingWindowFilter::cost] Warning: " << nan_count << " NaN cost terms ignored!" << std::endl;
-            }
-            if (exception_count > 0) {
-                std::cerr << "[SlidingWindowFilter::cost] Warning: " << exception_count << " exceptions occurred in cost terms!" << std::endl;
             }
             return cost;
         }
 
-        // Parallel processing with TBB parallel_for for large cost_terms_
+        // Parallel processing with TBB parallel_reduce for large cost_terms_
         tbb::global_control gc(tbb::global_control::max_allowed_parallelism, num_threads_);
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, cost_terms_.size(), 100),
-            [&total_cost, &nan_count, &exception_count, this](const tbb::blocked_range<size_t>& range) {
+        double total_cost = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, cost_terms_.size(), 100), 0.0, 
+            [this](const tbb::blocked_range<size_t>& range, double init) -> double {
+                double local_cost = init;
                 for (size_t i = range.begin(); i != range.end(); ++i) {
                     try {
                         double cost_i = cost_terms_.at(i)->cost();
                         if (std::isnan(cost_i)) {
-                            ++nan_count; // Atomic increment
+                            std::cerr << "[SlidingWindowFilter::cost] NaN cost term is ignored! " << std::endl;
                         } else {
-                            total_cost += cost_i; // Atomic addition
+                            local_cost += cost_i;
                         }
                     } catch (const std::exception& e) {
-                        ++exception_count; // Atomic increment
+            
                         std::cerr << "[SlidingWindowFilter::cost] exception in cost term at index " << i << ": " << e.what() << std::endl;
                     } catch (...) {
-                        ++exception_count; // Atomic increment
+                        
                         std::cerr << "[SlidingWindowFilter::cost] exception in cost term at index " << i << ": (unknown)" << std::endl;
                     }
                 }
-            }
+                return local_cost; // Returns partial sum to TBB, not exiting cost
+            },
+            std::plus<double>() // Combine partial results
         );
-
-        // Log warnings after parallel processing
-        if (nan_count > 0) {
-            std::cerr << "[SlidingWindowFilter::cost] Warning: " << nan_count << " NaN cost terms ignored!" << std::endl;
-        }
-        if (exception_count > 0) {
-            std::cerr << "[SlidingWindowFilter::cost] Warning: " << exception_count << " exceptions occurred in cost terms!" << std::endl;
-        }
-
         return total_cost;
     }
 
