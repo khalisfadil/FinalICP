@@ -24,6 +24,7 @@
 #include <solver/covariance.hpp>
 #include <solver/dogleggaussnewtonsolver.hpp>
 #include <solver/gausnewtonsolver.hpp>
+#include <solver/gausnewtonsolvernva.hpp>
 #include <solver/levmarqgaussnewtonsolver.hpp>
 #include <solver/linesearchgaussnewtonsolver.hpp>
 
