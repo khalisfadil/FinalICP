@@ -21,7 +21,6 @@
 #include <problem/optimizationproblem.hpp>
 #include <problem/slidingwindowfilter.hpp>
 
-
 #include <solver/covariance.hpp>
 #include <solver/dogleggaussnewtonsolver.hpp>
 #include <solver/gausnewtonsolver.hpp>
