@@ -101,7 +101,7 @@ namespace finalicp {
         unsigned int idx = it->second.local_block_index;
         // debug
         // ##################################
-        std::cout << "[DEBUG::StateVector] Mapping key " << key << " to block index " << idx << std::endl;
+        // std::cout << "[DEBUG::StateVector] Mapping key " << key << " to block index " << idx << std::endl;
         // ##################################
 
         // Return block index
@@ -114,15 +114,15 @@ namespace finalicp {
 
         // debug
         // ##################################
-        std::cout << "[DEBUG::StateVector] getStateBlockSizes - states_.size(): " << states_.size() << std::endl;
+        // std::cout << "[DEBUG::StateVector] getStateBlockSizes - states_.size(): " << states_.size() << std::endl;
         // ##################################
 
         for (auto it = states_.begin(); it != states_.end(); ++it) {
 
             // debug
             // ##################################
-            std::cout << "[DEBUG::StateVector] State key: " << it->first << ", local_block_index: " << it->second.local_block_index
-                    << ", perturb_dim: " << it->second.state->perturb_dim() << std::endl;
+            // std::cout << "[DEBUG::StateVector] State key: " << it->first << ", local_block_index: " << it->second.local_block_index
+            //         << ", perturb_dim: " << it->second.state->perturb_dim() << std::endl;
             // ##################################
 
             if (it->second.local_block_index < 0 ||
@@ -134,11 +134,11 @@ namespace finalicp {
 
         // debug
         // ##################################
-        std::cout << "[DEBUG::StateVector] StateVector::getStateBlockSizes returns: ";
-        for (const auto& size : result) {
-            std::cout << size << " ";
-        }
-        std::cout << std::endl;
+        // std::cout << "[DEBUG::StateVector] StateVector::getStateBlockSizes returns: ";
+        // for (const auto& size : result) {
+        //     std::cout << size << " ";
+        // }
+        // std::cout << std::endl;
         // ##################################
 
         return result;

@@ -13,11 +13,11 @@ namespace finalicp {
     : SolverBase(problem, params), params_(params) {}
 
     bool GaussNewtonSolver::linearizeSolveAndUpdate(double& cost, double& grad_norm) {
-        Timer iter_timer;
-        Timer timer;
-        double build_time = 0;
-        double solve_time = 0;
-        double update_time = 0;
+        // Timer iter_timer;
+        // Timer timer;
+        // double build_time = 0;
+        // double solve_time = 0;
+        // double update_time = 0;
 
         // The 'left-hand-side' of the Gauss-Newton problem, generally known as the
         // approximate Hessian matrix (note we only store the upper-triangular
@@ -32,36 +32,36 @@ namespace finalicp {
 
         // Construct system of equations
         
-        timer.reset();
+        // timer.reset();
         problem_.buildGaussNewtonTerms(approximate_hessian, gradient_vector);
         grad_norm = gradient_vector.norm();
-        build_time = timer.milliseconds();
+        // build_time = timer.milliseconds();
 
         // Debug: Log Hessian and gradient sizes and norms
         // ################################
-        std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Hessian size (" << approximate_hessian.rows() << "x" << approximate_hessian.cols() << "), non-zeros: " << approximate_hessian.nonZeros() << std::endl;
-        std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Gradient size (" << gradient_vector.size() << "), norm: " << grad_norm << std::endl;
+        // std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Hessian size (" << approximate_hessian.rows() << "x" << approximate_hessian.cols() << "), non-zeros: " << approximate_hessian.nonZeros() << std::endl;
+        // std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Gradient size (" << gradient_vector.size() << "), norm: " << grad_norm << std::endl;
         // ################################
 
         // Solve system
-        timer.reset();
+        // timer.reset();
         Eigen::VectorXd perturbation = solveGaussNewton(approximate_hessian, gradient_vector);
-        solve_time = timer.milliseconds();
+        // solve_time = timer.milliseconds();
 
         // Debug: Log perturbation size and norm
         // ################################
-        std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Perturbation size (" << perturbation.size() << "), norm: " << perturbation.norm() << std::endl;
+        // std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Perturbation size (" << perturbation.size() << "), norm: " << perturbation.norm() << std::endl;
         // ################################
 
         // Apply update
-        timer.reset();
+        // timer.reset();
         cost = proposeUpdate(perturbation);
         acceptProposedState();
-        update_time = timer.milliseconds();
+        // update_time = timer.milliseconds();
 
         // Debug: Log updated cost
         // ################################
-        std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Updated cost: " << cost << std::endl;
+        // std::cout << "[DEBUG::GaussNewtonSolver] Iteration " << curr_iteration_ << ": Updated cost: " << cost << std::endl;
         // ################################
 
         // Print report line if verbose option enabled

@@ -267,7 +267,7 @@ namespace finalicp {
 
                 // Debug: Print key, Jacobian size, and block index
                 // ################################
-                std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", blkIdx1=" << blkIdx1 << std::endl;
+                // std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", blkIdx1=" << blkIdx1 << std::endl;
                 // ################################
 
                 // Update gradient
@@ -275,7 +275,7 @@ namespace finalicp {
 
                 // Debug: Print gradient term size and norm
                 // ################################
-                std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
+                // std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
                 // ################################
 
                 gradient_vector->mapAt(blkIdx1) += newGradTerm;
@@ -288,7 +288,7 @@ namespace finalicp {
 
                     // Debug: Print inner loop key and block index
                     // ################################
-                    std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
+                    // std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
                     // ################################
 
                     unsigned int row, col;
@@ -306,7 +306,7 @@ namespace finalicp {
 
                     // Debug: Print Hessian term size and norm
                     // ################################
-                    std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
+                    // std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
                     // ################################
 
                     // Update Hessian with mutex protection

@@ -13,7 +13,7 @@ namespace finalicp {
 
         //debug
         // ############################
-        std::cout << "[DEBUG::SolverBase] curr_cost_: "  << curr_cost_ << std::endl;
+        // std::cout << "[DEBUG::SolverBase] curr_cost_: "  << curr_cost_ << std::endl;
         // ############################
     }
 

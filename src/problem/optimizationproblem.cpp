@@ -52,17 +52,17 @@ namespace finalicp {
 
             //debug
             // ##################################
-            std::cout << "[DEBUG::OptimizationProblem] Adding state var with key: " << state_var->key() << ", perturb_dim: " << state_var->perturb_dim() << std::endl;
+            // std::cout << "[DEBUG::OptimizationProblem] Adding state var with key: " << state_var->key() << ", perturb_dim: " << state_var->perturb_dim() << std::endl;
             // ##################################
         }
 
         //debug
         // ##################################
-        std::cout << "[DEBUG::OptimizationProblem] State vector block sizes: ";
-        for (const auto& size : state_vector_->getStateBlockSizes()) {
-            std::cout << size << " ";
-        }
-        std::cout << std::endl;
+        // std::cout << "[DEBUG::OptimizationProblem] State vector block sizes: ";
+        // for (const auto& size : state_vector_->getStateBlockSizes()) {
+        //     std::cout << size << " ";
+        // }
+        // std::cout << std::endl;
         // ##################################
 
         return state_vector_;
@@ -74,11 +74,11 @@ namespace finalicp {
         
         // debug
         // ##################################
-        std::cout << "[DEBUG::OptimizationProblem] buildGaussNewtonTerms - sqSizes: ";
-        for (const auto& size : sqSizes) {
-            std::cout << size << " ";
-        }
-        std::cout << std::endl;
+        // std::cout << "[DEBUG::OptimizationProblem] buildGaussNewtonTerms - sqSizes: ";
+        // for (const auto& size : sqSizes) {
+        //     std::cout << size << " ";
+        // }
+        // std::cout << std::endl;
         // ##################################
         
         BlockSparseMatrix A_(sqSizes, true);
@@ -86,7 +86,7 @@ namespace finalicp {
 
         // debug
         // ##################################
-        std::cout << "[DEBUG::OptimizationProblem] Gradient vector num entries: " << b_.getIndexing().numEntries() << std::endl;
+        // std::cout << "[DEBUG::OptimizationProblem] Gradient vector num entries: " << b_.getIndexing().numEntries() << std::endl;
         // ##################################
 
         // Process cost terms: sequential for small sizes, parallel for large
@@ -103,14 +103,14 @@ namespace finalicp {
         }
         // debug
         // ##################################
-        std::cout << "[DEBUG::OptimizationProblem] Converting BlockSparseMatrix to Eigen" << std::endl;
+        // std::cout << "[DEBUG::OptimizationProblem] Converting BlockSparseMatrix to Eigen" << std::endl;
         // ##################################
 
         approximate_hessian = A_.toEigen(false);
 
         // debug
         // ##################################
-        std::cout << "[DEBUG::OptimizationProblem] Converting BlockVector to Eigen, size: " << b_.toEigen().size() << std::endl;
+        // std::cout << "[DEBUG::OptimizationProblem] Converting BlockVector to Eigen, size: " << b_.toEigen().size() << std::endl;
         // ##################################
 
         gradient_vector = b_.toEigen();

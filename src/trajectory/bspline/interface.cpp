@@ -37,16 +37,16 @@ namespace finalicp {
 
                 // Debug output: Print the StateKey for each control point
                 // ################################
-                std::cout << "[DEBUG] Velocity interpolator at time " << time.nanosecs() / 1e9 << "s uses keys: "
-                        << v1->getC()->key() << " "
-                        << v2->getC()->key() << " "
-                        << v3->getC()->key() << " "
-                        << v4->getC()->key() << std::endl;
-                std::cout << "[DEBUG] Knot times for time " << time.nanosecs() / 1e9 << "s: "
-                        << t1.nanosecs() / 1e9 << "s, "
-                        << t2.nanosecs() / 1e9 << "s, "
-                        << t3.nanosecs() / 1e9 << "s, "
-                        << t4.nanosecs() / 1e9 << "s" << std::endl;
+                // std::cout << "[DEBUG] Velocity interpolator at time " << time.nanosecs() / 1e9 << "s uses keys: "
+                //         << v1->getC()->key() << " "
+                //         << v2->getC()->key() << " "
+                //         << v3->getC()->key() << " "
+                //         << v4->getC()->key() << std::endl;
+                // std::cout << "[DEBUG] Knot times for time " << time.nanosecs() / 1e9 << "s: "
+                //         << t1.nanosecs() / 1e9 << "s, "
+                //         << t2.nanosecs() / 1e9 << "s, "
+                //         << t3.nanosecs() / 1e9 << "s, "
+                //         << t4.nanosecs() / 1e9 << "s" << std::endl;
                 // ################################
 
                 return VelocityInterpolator::MakeShared(time, v1, v2, v3, v4);

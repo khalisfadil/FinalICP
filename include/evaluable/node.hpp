@@ -18,7 +18,7 @@ namespace finalicp{
             void addChild(const Ptr& child) { 
                 //debug
                 // ################################
-                std::cout << "[DEBUG::node] Adding child to NodeBase: " << this << ", child: " << child.get() << ", use_count: " << child.use_count() << std::endl;
+                // std::cout << "[DEBUG::node] Adding child to NodeBase: " << this << ", child: " << child.get() << ", use_count: " << child.use_count() << std::endl;
                  // ################################
                 children_.emplace_back(child); }
 
@@ -26,7 +26,7 @@ namespace finalicp{
             Ptr at(const size_t& index) const { 
                 //debug
                 // ################################
-                std::cout << "[DEBUG::node] Accessing child at index: " << index << " from NodeBase: " << this << std::endl;
+                // std::cout << "[DEBUG::node] Accessing child at index: " << index << " from NodeBase: " << this << std::endl;
                  // ################################
                 return children_.at(index); }
 
