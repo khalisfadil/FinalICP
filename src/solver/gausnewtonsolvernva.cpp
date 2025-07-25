@@ -52,8 +52,10 @@ namespace finalicp {
                     timer.reset();
                     // Apply update
                     cost = proposeUpdate(alpha * perturbation);
-                    update_time += timer.milliseconds();  
-                    std::cout << "line search it: " << j << " prev_cost: " << prev_cost_ << " new_cost: " << cost << " alpha: " << alpha << std::endl;
+                    update_time += timer.milliseconds();
+#ifdef DEBUG
+                    std::cout << "[GNSNVA DEBUG] Line search it: " << j << " prev_cost: " << prev_cost_ << " new_cost: " << cost << " alpha: " << alpha << std::endl;
+#endif
                     if (cost <= prev_cost_) {
                         acceptProposedState();
                         break;
@@ -72,6 +74,7 @@ namespace finalicp {
             update_time = timer.milliseconds();
         }
 
+#ifdef DEBUG
         // Print report line if verbose option enabled
         if (params_.verbose) {
             if (curr_iteration_ == 1) {
@@ -95,6 +98,7 @@ namespace finalicp {
                     << std::endl;
             // clang-format on
         }
+#endif
 
         return true;
     }
