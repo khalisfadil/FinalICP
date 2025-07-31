@@ -33,15 +33,41 @@ namespace finalicp {
         grad_norm = gradient_vector.norm();
         build_time = timer.milliseconds();
 
+#ifdef DEBUG
+    // --- [KEY DEBUG] CHECK THE HEALTH OF THE LINEAR SYSTEM ---
+    std::cout << "[GNSNVA DEBUG] Built system. Grad norm: " << grad_norm << ". Hessian non-zeros: " << approximate_hessian.nonZeros() << std::endl;
+    if (!gradient_vector.allFinite()) {
+        std::cout << "[GNSNVA DEBUG] CRITICAL: Gradient vector contains non-finite values!" << std::endl;
+        return false; // Abort this iteration
+    }
+    if (!approximate_hessian.coeffs().allFinite()) {
+        std::cout << "[GNSNVA DEBUG] CRITICAL: Hessian matrix contains non-finite values!" << std::endl;
+        return false; // Abort this iteration
+    }
+#endif
+
         // Solve system
         timer.reset();
         Eigen::VectorXd perturbation = solveGaussNewton(approximate_hessian, gradient_vector);
         solve_time = timer.milliseconds();
 
+#ifdef DEBUG
+    // --- [KEY DEBUG] CHECK THE HEALTH OF THE SOLUTION (THE STATE UPDATE) ---
+    double perturbation_norm = perturbation.norm();
+    std::cout << "[GNSNVA DEBUG] Solved system. Perturbation norm: " << perturbation_norm << std::endl;
+    if (!perturbation.allFinite()) {
+        std::cout << "[GNSNVA DEBUG] CRITICAL: Perturbation (state update) is non-finite! System solve failed." << std::endl;
+        return false; // Abort this iteration
+    }
+#endif
+
         if (params_.line_search) {
             const double expected_delta_cost = 0.5 * gradient_vector.transpose() * perturbation;
             if (expected_delta_cost < 0.0) {
                 throw std::runtime_error("Expected delta cost must be >= 0.0");
+#ifdef DEBUG
+                std::cout << "[GNSNVA DEBUG] CRITICAL: Expected delta cost is negative (" << expected_delta_cost << "). The descent direction is invalid." << std::endl;
+#endif
             }
             if (expected_delta_cost < 1.0e-5 || fabs(expected_delta_cost / cost) < 1.0e-7) {
                 solver_converged_ = true;
@@ -104,34 +130,82 @@ namespace finalicp {
     }
 
     Eigen::VectorXd GaussNewtonSolverNVA::solveGaussNewton(const Eigen::SparseMatrix<double>& approximate_hessian, const Eigen::VectorXd& gradient_vector) {
-        // Perform a Cholesky factorization of the approximate Hessian matrix
-        // Check if the pattern has been initialized
+
+#ifdef DEBUG
+        // --- [PRE-SOLVE DIAGNOSTICS] ---
+        // Check for obvious problems in the Hessian before attempting to solve.
+        bool hessian_ok = true;
+        for (int k = 0; k < approximate_hessian.outerSize(); ++k) {
+            for (Eigen::SparseMatrix<double>::InnerIterator it(approximate_hessian, k); it; ++it) {
+                if (!std::isfinite(it.value())) {
+                    std::cerr << "[GNSNVA DEBUG] CRITICAL: Hessian contains non-finite value at (" 
+                            << it.row() << ", " << it.col() << ")!" << std::endl;
+                    hessian_ok = false;
+                    break;
+                }
+            }
+            if (!hessian_ok) break;
+        }
+
+        for (int i = 0; i < approximate_hessian.rows(); ++i) {
+            if (approximate_hessian.coeff(i, i) <= 0) {
+                std::cerr << "[GNSNVA DEBUG] WARNING: Hessian has a non-positive diagonal at index "
+                        << i << " (value: " << approximate_hessian.coeff(i, i) 
+                        << "). This will cause Cholesky decomposition to fail." << std::endl;
+                hessian_ok = false;
+            }
+        }
+
+        if (!hessian_ok) {
+            // Throw an exception to halt the optimization cleanly if pre-checks fail.
+            throw decomp_failure("Pre-solve checks on the Hessian matrix failed.");
+        }
+#endif
+
+        // --- [SYMBOLIC ANALYSIS] ---
         if (!pattern_initialized_) {
-            // The first time we are solving the problem we need to analyze the sparsity
-            // pattern
-            // ** Note we use approximate-minimal-degree (AMD) reordering.
-            //    Also, this step does not actually use the numerical values in
-            //    gaussNewtonLHS
             hessian_solver_->analyzePattern(approximate_hessian);
             if (params_.reuse_previous_pattern) pattern_initialized_ = true;
         }
 
-        // Perform a Cholesky factorization of the approximate Hessian matrix
+        // --- [NUMERICAL FACTORIZATION] ---
         hessian_solver_->factorize(approximate_hessian);
 
-        // Check if the factorization succeeded
+        // --- [FACTORIZATION SANITY CHECK] ---
         if (hessian_solver_->info() != Eigen::Success) {
-            throw decomp_failure(
-                "During steam solve, Eigen LLT decomposition failed. "
-                "It is possible that the matrix was ill-conditioned, in which case "
-                "adding a prior may help. On the other hand, it is also possible that "
-                "the problem you've constructed is not positive semi-definite.");
+            std::string error_msg = "Eigen LLT decomposition failed. ";
+#ifdef DEBUG
+            // Provide a more detailed error message in debug builds
+            switch(hessian_solver_->info()) {
+                case Eigen::NumericalIssue:
+                    error_msg += "Reason: Numerical issue. The matrix is likely not positive-definite or is ill-conditioned.";
+                    break;
+                case Eigen::NoConvergence:
+                    error_msg += "Reason: No convergence (not applicable to LLT, but for completeness).";
+                    break;
+                case Eigen::InvalidInput:
+                    error_msg += "Reason: Invalid input.";
+                    break;
+                default:
+                    error_msg += "Reason: Unknown.";
+                    break;
+            }
+#endif
+            throw decomp_failure(error_msg);
         }
 
-        // todo - it would be nice to check the condition number (not just the
-        // determinant) of the solved system... need to find a fast way to do this
+        // --- [SOLVE & POST-SOLVE DIAGNOSTICS] ---
+        Eigen::VectorXd perturbation = hessian_solver_->solve(gradient_vector);
 
-        // Do the backward pass, using the Cholesky factorization (fast)
-        return hessian_solver_->solve(gradient_vector);
+#ifdef DEBUG
+        // After solving, check the result. A non-finite or huge perturbation is a major red flag.
+        if (!perturbation.allFinite()) {
+            std::cerr << "[GNSNVA DEBUG] CRITICAL: The calculated perturbation vector contains non-finite values! The system is likely ill-conditioned." << std::endl;
+        } else {
+            std::cout << "[GNSNVA DEBUG] Calculated perturbation norm: " << perturbation.norm() << std::endl;
+        }
+#endif
+
+        return perturbation;
     }
 } // namespace finaleicp
