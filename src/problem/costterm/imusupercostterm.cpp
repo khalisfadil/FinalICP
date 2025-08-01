@@ -4,6 +4,10 @@
 
 namespace finalicp {
 
+    // ##########################################
+    // MakeShared
+    // ##########################################
+
     IMUSuperCostTerm::Ptr IMUSuperCostTerm::MakeShared(const Interface::ConstPtr &interface, const Time time1, const Time time2,
                                                         const Evaluable<BiasType>::ConstPtr &bias1,
                                                         const Evaluable<BiasType>::ConstPtr &bias2,
@@ -12,6 +16,10 @@ namespace finalicp {
                                                         const Options &options) {
         return std::make_shared<IMUSuperCostTerm>(interface, time1, time2, bias1, bias2, transform_i_to_m_1, transform_i_to_m_2, options);
     }
+
+    // ##########################################
+    // cost
+    // ##########################################
 
     double IMUSuperCostTerm::cost() const {
 
@@ -49,6 +57,11 @@ namespace finalicp {
 
         // Sequential processing for small imu_data_vec_ to avoid parallel overhead
         double cost = 0;
+
+#ifdef DEBUG
+        std::cout << "[IMUSuperCostTerm DEBUG] Calculating cost for " << imu_data_vec_.size() << " IMU measurements..." << std::endl;
+#endif
+
         for (int i = 0; i < (int)imu_data_vec_.size(); ++i) {
             try {
                 const double &ts = imu_data_vec_[i].timestamp;
@@ -116,14 +129,42 @@ namespace finalicp {
 
                 if (!std::isnan(cost_i)) {cost += cost_i; }
 
+#ifdef DEBUG
+                if (i == 0) {
+                    std::cout << "    - First IMU data point (t=" << std::fixed << std::setprecision(4) << ts << "):" << std::endl;
+                    if (!dw_i.allFinite() || !w_i.allFinite()) {
+                        std::cerr << "    - CRITICAL: Interpolated state (vel/accel) is non-finite!" << std::endl;
+                    } else {
+                        std::cout << "      - Interp Accel norm: " << dw_i.norm() << ", Interp Vel norm: " << w_i.norm() << std::endl;
+                        std::cout << "      - Interp Bias norm:  " << bias_i.norm() << std::endl;
+                    }
+
+                    if (!raw_error_acc.allFinite() || !raw_error_gyro.allFinite()) {
+                        std::cerr << "    - CRITICAL: Raw IMU error is non-finite!" << std::endl;
+                    } else {
+                        std::cout << "      - Raw Accel Error norm: " << raw_error_acc.norm() << std::endl;
+                        std::cout << "      - Raw Gyro Error norm:  " << raw_error_gyro.norm() << std::endl;
+                    }
+                }
+#endif
+
             } catch (const std::exception& e) {
                 std::cerr << "[IMUSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
             } catch (...) {
                 std::cerr << "[IMUSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
             }
         }
+
+#ifdef DEBUG
+        std::cout << "    - Total IMU cost contribution: " << cost << std::endl;
+#endif
+
         return cost;
     }
+
+    // ##########################################
+    // getRelatedVarKeys
+    // ##########################################
 
     void IMUSuperCostTerm::getRelatedVarKeys(KeySet &keys) const {
         knot1_->pose()->getRelatedVarKeys(keys);
@@ -138,9 +179,20 @@ namespace finalicp {
         transform_i_to_m_2_->getRelatedVarKeys(keys);
     }
 
+    // ##########################################
+    // init
+    // ##########################################
+
     void IMUSuperCostTerm::init() { initialize_interp_matrices_(); }
 
+    // ##########################################
+    // initialize_interp_matrices_
+    // ##########################################
+
     void IMUSuperCostTerm::initialize_interp_matrices_() {
+#ifdef DEBUG
+        std::cout << "[IMUSuperCostTerm DEBUG] Initializing interpolation matrices for " << imu_data_vec_.size() << " timestamps." << std::endl;
+#endif
         const Eigen::Matrix<double, 6, 1> ones = Eigen::Matrix<double, 6, 1>::Ones();
         // #pragma omp parallel for num_threads(options_.num_threads)
         for (const IMUData &imu_data : imu_data_vec_) {
@@ -175,14 +227,25 @@ namespace finalicp {
             lambda(2, 1) = lambda18(12, 6);
             lambda(2, 2) = lambda18(12, 12);
             const auto omega_lambda = std::make_pair(omega, lambda);
-        // #pragma omp critical
+#ifdef DEBUG
+            // --- [IMPROVEMENT] Sanity-check the computed matrices ---
+            if (!omega.allFinite() || !lambda.allFinite()) {
+                    std::cerr << "[IMUSuperCostTerm DEBUG] CRITICAL: Computed interpolation matrices for time " << time << " are non-finite!" << std::endl;
+            }
+#endif
             interp_mats_.emplace(time, omega_lambda);
             }
         }
     }
 
+    // ##########################################
+    // buildGaussNewtonTerms
+    // ##########################################
+
     void IMUSuperCostTerm::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
-        
+#ifdef DEBUG
+        std::cout << "[IMUSuperCostTerm DEBUG] Building Gauss-Newton terms..." << std::endl;
+#endif
         // Retrieve knot states
         using namespace se3;
         using namespace vspace;
@@ -362,12 +425,35 @@ namespace finalicp {
                 // Accumulate contributions
                 A += G.transpose() * G;
                 b += (-1) * G.transpose() * error;
+
+#ifdef DEBUG
+                // --- [IMPROVEMENT] Check Jacobians for the first measurement ---
+                if (i == 0) {
+                    if (!interp_jac_pose.allFinite() || !interp_jac_vel.allFinite() || !interp_jac_acc.allFinite()) {
+                        std::cerr << "[IMUSuperCostTerm DEBUG] CRITICAL: Intermediate state Jacobians are non-finite!" << std::endl;
+                    }
+                    if (!G.allFinite() || !error.allFinite()) {
+                        std::cerr << "[IMUSuperCostTerm DEBUG] CRITICAL: Final Jacobian (G) or error vector is non-finite!" << std::endl;
+                    } else {
+                        std::cout << "    - First IMU point Jacobian norm (G): " << G.norm() << std::endl;
+                    }
+                }
+#endif
             } catch (const std::exception& e) {
                 std::cerr << "[IMUSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
             } catch (...) {
                 std::cerr << "[IMUSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
             }
         }
+
+#ifdef DEBUG
+        // --- [IMPROVEMENT] Check the accumulated local system before scattering ---
+        if (!A.allFinite() || !b.allFinite()) {
+            std::cerr << "[IMUSuperCostTerm DEBUG] CRITICAL: Accumulated local Hessian (A) or Gradient (b) is non-finite!" << std::endl;
+        } else {
+             std::cout << "    - Accumulated local Hessian norm: " << A.norm() << ", Gradient norm: " << b.norm() << std::endl;
+        }
+#endif
 
         // Determine active variables and extract keys
         std::vector<bool> active;
@@ -518,21 +604,16 @@ namespace finalicp {
         for (size_t i = 0; i < 10; ++i) {
             try {
                 if (!active[i]) continue;
+#ifdef DEBUG
+                // --- [IMPROVEMENT] Add logging to the scatter process ---
+                std::cout << "    - Scattering contribution from local block (" << i << "," << j << ") to global block (" << row << "," << col << ")" << std::endl;
+#endif
                 const auto& key1 = keys[i];
                 unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
-
-                // Debug: Print key, Jacobian size, and block index
-                // ################################
-                // std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", blkIdx1=" << blkIdx1 << std::endl;
-                // ################################
 
                 // Update gradient
                 Eigen::MatrixXd newGradTerm = b.block<6, 1>(i * 6, 0);
 
-                // Debug: Print gradient term size and norm
-                // ################################
-                // std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
-                // ################################
 
                 gradient_vector->mapAt(blkIdx1) += newGradTerm;
 
@@ -542,11 +623,6 @@ namespace finalicp {
                     if (!active[j]) continue;
                     const auto& key2 = keys[j];
                     unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
-
-                    // Debug: Print inner loop key and block index
-                    // ################################
-                    // std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
-                    // ################################
 
                     unsigned int row, col;
                     const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
@@ -560,11 +636,6 @@ namespace finalicp {
                             return A.block<6, 6>(j * 6, i * 6);
                         }
                     }();
-
-                    // Debug: Print Hessian term size and norm
-                    // ################################
-                    // std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
-                    // ################################
                     
                     BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
 

@@ -4,9 +4,17 @@
 
 namespace finalicp {
 
+    // ##########################################
+    // MakeShared
+    // ##########################################
+
     P2PSuperCostTerm::Ptr P2PSuperCostTerm::MakeShared(const Interface::ConstPtr &interface, const Time time1, const Time time2, const Options &options) {
         return std::make_shared<P2PSuperCostTerm>(interface, time1, time2, options);
     }
+
+    // ##########################################
+    // cost
+    // ##########################################
 
     double P2PSuperCostTerm::cost() const {
 
@@ -38,6 +46,9 @@ namespace finalicp {
         // const double sqrt_rinv = sqrt(rinv);
 
         // Sequential processing for small meas_times_ to avoid parallel overhead
+#ifdef DEBUG
+        std::cout << "[P2PSuperCostTerm DEBUG] Calculating cost for " << p2p_matches_.size() << " matches across " << meas_times_.size() << " timestamps..." << std::endl;
+#endif
         double cost = 0;
         for (unsigned int i = 0; i < meas_times_.size(); ++i) {
             try {
@@ -58,6 +69,19 @@ namespace finalicp {
                     const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
                     double match_cost = p2p_loss_func_->cost(fabs(raw_error));
                     if (!std::isnan(match_cost)) {cost_i += match_cost;}
+#ifdef DEBUG
+                    // Log details for the very first point-to-plane match only to avoid spam
+                    if (i == 0 && match_idx == bin_indices[0]) {
+                        if (!T_mr.allFinite()) {
+                            std::cerr << "    - CRITICAL: Interpolated pose T_mr is non-finite!" << std::endl;
+                        }
+                        if (!std::isfinite(raw_error)) {
+                             std::cerr << "    - CRITICAL: Raw P2P error is non-finite!" << std::endl;
+                        } else {
+                            std::cout << "    - First match (t=" << std::fixed << std::setprecision(4) << ts << "): raw_error = " << raw_error << std::endl;
+                        }
+                    }
+#endif
                 }
 
                 if (!std::isnan(cost_i)) {cost += cost_i;}
@@ -67,9 +91,16 @@ namespace finalicp {
                 std::cerr << "[P2PSuperCostTerm::cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
             }
         }
+#ifdef DEBUG
+        std::cout << "    - Total P2P cost contribution: " << cost << std::endl;
+#endif
 
         return cost;
     }
+
+    // ##########################################
+    // getRelatedVarKeys
+    // ##########################################
 
     void P2PSuperCostTerm::getRelatedVarKeys(KeySet &keys) const {
         knot1_->pose()->getRelatedVarKeys(keys);
@@ -80,7 +111,14 @@ namespace finalicp {
         knot2_->acceleration()->getRelatedVarKeys(keys);
     }
 
+    // ##########################################
+    // initP2PMatches
+    // ##########################################
+
     void P2PSuperCostTerm::initP2PMatches() {
+#ifdef DEBUG
+        std::cout << "[P2PSuperCostTerm DEBUG] Initializing... Grouping " << p2p_matches_.size() << " matches by timestamp." << std::endl;
+#endif
         p2p_match_bins_.clear();
         for (int i = 0; i < (int)p2p_matches_.size(); ++i) {
             const auto &p2p_match = p2p_matches_.at(i);
@@ -98,52 +136,68 @@ namespace finalicp {
         initialize_interp_matrices_();
     }
 
+    // ##########################################
+    // MakeShared
+    // ##########################################
+
     void P2PSuperCostTerm::initialize_interp_matrices_() {
         const Eigen::Matrix<double, 6, 1> ones = Eigen::Matrix<double, 6, 1>::Ones();
         for (const double &time : meas_times_) {
             if (interp_mats_.find(time) == interp_mats_.end()) {
-            // Get Lambda, Omega for this time
-            const double tau = time - time1_.seconds();
-            const double kappa = knot2_->time().seconds() - time;
+                // Get Lambda, Omega for this time
+                const double tau = time - time1_.seconds();
+                const double kappa = knot2_->time().seconds() - time;
 
-            
-            const Matrix18d Q_tau = interface_->getQPublic(tau, ones);
-            const Matrix18d Tran_kappa = interface_->getTranPublic(kappa);
-            const Matrix18d Tran_tau = interface_->getTranPublic(tau);
-            const Matrix18d omega18 = (Q_tau * Tran_kappa.transpose() * Qinv_T_);
-            const Matrix18d lambda18 = (Tran_tau - omega18 * Tran_T_);
+                
+                const Matrix18d Q_tau = interface_->getQPublic(tau, ones);
+                const Matrix18d Tran_kappa = interface_->getTranPublic(kappa);
+                const Matrix18d Tran_tau = interface_->getTranPublic(tau);
+                const Matrix18d omega18 = (Q_tau * Tran_kappa.transpose() * Qinv_T_);
+                const Matrix18d lambda18 = (Tran_tau - omega18 * Tran_T_);
 
-            Eigen::Matrix3d omega = Eigen::Matrix3d::Zero();
-            Eigen::Matrix3d lambda = Eigen::Matrix3d::Zero();
+                Eigen::Matrix3d omega = Eigen::Matrix3d::Zero();
+                Eigen::Matrix3d lambda = Eigen::Matrix3d::Zero();
 
-            omega(0, 0) = omega18(0, 0);
-            omega(0, 1) = omega18(0, 6);
-            omega(0, 2) = omega18(0, 12);
-            omega(1, 0) = omega18(6, 0);
-            omega(1, 1) = omega18(6, 6);
-            omega(1, 2) = omega18(6, 12);
-            omega(2, 0) = omega18(12, 0);
-            omega(2, 1) = omega18(12, 6);
-            omega(2, 2) = omega18(12, 12);
+                omega(0, 0) = omega18(0, 0);
+                omega(0, 1) = omega18(0, 6);
+                omega(0, 2) = omega18(0, 12);
+                omega(1, 0) = omega18(6, 0);
+                omega(1, 1) = omega18(6, 6);
+                omega(1, 2) = omega18(6, 12);
+                omega(2, 0) = omega18(12, 0);
+                omega(2, 1) = omega18(12, 6);
+                omega(2, 2) = omega18(12, 12);
 
-            lambda(0, 0) = lambda18(0, 0);
-            lambda(0, 1) = lambda18(0, 6);
-            lambda(0, 2) = lambda18(0, 12);
-            lambda(1, 0) = lambda18(6, 0);
-            lambda(1, 1) = lambda18(6, 6);
-            lambda(1, 2) = lambda18(6, 12);
-            lambda(2, 0) = lambda18(12, 0);
-            lambda(2, 1) = lambda18(12, 6);
-            lambda(2, 2) = lambda18(12, 12);
+                lambda(0, 0) = lambda18(0, 0);
+                lambda(0, 1) = lambda18(0, 6);
+                lambda(0, 2) = lambda18(0, 12);
+                lambda(1, 0) = lambda18(6, 0);
+                lambda(1, 1) = lambda18(6, 6);
+                lambda(1, 2) = lambda18(6, 12);
+                lambda(2, 0) = lambda18(12, 0);
+                lambda(2, 1) = lambda18(12, 6);
+                lambda(2, 2) = lambda18(12, 12);
 
+#ifdef DEBUG
+                // --- [IMPROVEMENT] Sanity-check the computed matrices ---
+                if (!omega.allFinite() || !lambda.allFinite()) {
+                     std::cerr << "[P2PSuperCostTerm DEBUG] CRITICAL: Computed interpolation matrices for time " << time << " are non-finite!" << std::endl;
+                }
+#endif
 
-            interp_mats_.emplace(time, std::make_pair(omega, lambda));
+                interp_mats_.emplace(time, std::make_pair(omega, lambda));
             }
         }
     }
 
-    void P2PSuperCostTerm::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
+    // ##########################################
+    // buildGaussNewtonTerms
+    // ##########################################
 
+    void P2PSuperCostTerm::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
+#ifdef DEBUG
+        std::cout << "🛠️  [P2PSuperCostTerm DEBUG] Building Gauss-Newton terms..." << std::endl;
+#endif
         // Retrieve knot states
         using namespace se3;
         using namespace vspace;
@@ -215,12 +269,35 @@ namespace finalicp {
                 const Eigen::Matrix<double, 1, 36> G = Gmeas * interp_jac;
                 A += G.transpose() * G;
                 b -= G.transpose() * error;
+
+#ifdef DEBUG
+                if (i == 0) {
+                    if (!interp_jac.allFinite()) {
+                        std::cerr << "[P2PSuperCostTerm DEBUG] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
+                    }
+                    if (!Gmeas.allFinite()) {
+                        std::cerr << "[P2PSuperCostTerm DEBUG] CRITICAL: Aggregated measurement Jacobian (Gmeas) is non-finite!" << std::endl;
+                    } else {
+                        std::cout << "    - First timestamp bin: interp_jac norm: " << interp_jac.norm() << ", Gmeas norm: " << Gmeas.norm() << std::endl;
+                    }
+                }
+#endif
+
             } catch (const std::exception& e) {
                 std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
             } catch (...) {
                 std::cerr << "[P2PSuperCostTerm::buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
             }
         }
+
+#ifdef DEBUG
+        // --- [IMPROVEMENT] Check the accumulated local system before scattering ---
+        if (!A.allFinite() || !b.allFinite()) {
+            std::cerr << "[P2PSuperCostTerm DEBUG] CRITICAL: Accumulated local Hessian (A) or Gradient (b) is non-finite!" << std::endl;
+        } else {
+             std::cout << "    - Accumulated local Hessian norm: " << A.norm() << ", Gradient norm: " << b.norm() << std::endl;
+        }
+#endif
 
         // Determine active variables and extract keys
         std::vector<bool> active;
@@ -318,18 +395,8 @@ namespace finalicp {
                 const auto& key1 = keys[i];
                 unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
 
-                // Debug: Print key, Jacobian size, and block index
-                // ################################
-                // std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", blkIdx1=" << blkIdx1 << std::endl;
-                // ################################
-
                 // Update gradient
                 Eigen::MatrixXd newGradTerm = b.block<6, 1>(i * 6, 0);
-
-                // Debug: Print gradient term size and norm
-                // ################################
-                // std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
-                // ################################
 
                 gradient_vector->mapAt(blkIdx1) += newGradTerm;
 
@@ -338,11 +405,6 @@ namespace finalicp {
                     if (!active[j]) continue;
                     const auto& key2 = keys[j];
                     unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
-
-                    // Debug: Print inner loop key and block index
-                    // ################################
-                    // std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
-                    // ################################
 
                     unsigned int row, col;
                     const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
@@ -357,16 +419,18 @@ namespace finalicp {
                         }
                     }();
 
-                    // Debug: Print Hessian term size and norm
-                    // ################################
-                    // std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
-                    // ################################
-
                     // Update Hessian with mutex protection
                     BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
                     // omp_set_lock(&entry.lock);
                     entry.data += newHessianTerm;
                     // omp_unset_lock(&entry.lock);
+#ifdef DEBUG
+                    // --- [IMPROVEMENT] Add logging to the scatter process ---
+                    // Log only for the diagonal blocks to reduce spam
+                    if (i == j) {
+                        std::cout << "    - Scattering contribution from local block (" << i << "," << j << ") to global block (" << row << "," << col << ")" << std::endl;
+                    }
+#endif
                 }
             } catch (const std::exception& e) {
                 std::cerr << "[P2PCVSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ": " << e.what() << std::endl;
