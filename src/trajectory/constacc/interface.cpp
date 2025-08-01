@@ -19,7 +19,7 @@ namespace finalicp {
         namespace const_acc {
 
             // ###########################################################
-            // Interafce
+            // MakeShared
             // ###########################################################
             
             auto Interface::MakeShared(const Eigen::Matrix<double, 6, 1>& Qc_diag) -> Ptr {
@@ -37,7 +37,7 @@ namespace finalicp {
                 if (knot_map_.find(time) != knot_map_.end()) throw std::runtime_error("adding knot at duplicated time");
 #ifdef DEBUG
                 // --- [IMPROVEMENT] Log knot addition ---
-                std::cout << "[CONSTACC DEBUG] Adding knot at time: " << std::fixed << time.seconds() << std::endl;
+                std::cout << "[CONSTACC Interface DEBUG] Adding knot at time: " << std::fixed << time.seconds() << std::endl;
 #endif
                 const auto knot = std::make_shared<Variable>(time, T_k0, w_0k_ink, dw_0k_ink);
                 knot_map_.insert(knot_map_.end(), std::pair<Time, Variable::Ptr>(time, knot));
@@ -52,7 +52,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getPoseInterpolator
             // ###########################################################
 
             auto Interface::getPoseInterpolator(const Time time) const -> Evaluable<PoseType>::ConstPtr {
@@ -104,7 +104,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getVelocityInterpolator
             // ###########################################################
 
             auto Interface::getVelocityInterpolator(const Time time) const -> Evaluable<VelocityType>::ConstPtr {
@@ -185,7 +185,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getCovariance
             // ###########################################################
 
             auto Interface::getCovariance(const Covariance& cov, const Time time) -> CovType {
@@ -236,10 +236,10 @@ namespace finalicp {
                     const Eigen::Matrix<double, 18, 18> P_end = cov.query(state_var);
 
 #ifdef DEBUG
-                    std::cout << "[CONSTACC DEBUG] Extrapolating covariance..." << std::endl;
+                    std::cout << "[CONSTACC Interface DEBUG] Extrapolating covariance..." << std::endl;
                     if (!P_end.allFinite()) std::cerr << "[CONSTACC DEBUG] Input covariance P_end contains non-finite values!" << std::endl;
                     const CovType result = E_t1_inv * (F_t1 * P_end * F_t1.transpose() + Qt1) * E_t1_inv.transpose();
-                    if (!result.allFinite()) std::cerr << "[CONSTACC DEBUG] Resulting extrapolated covariance contains non-finite values!" << std::endl;
+                    if (!result.allFinite()) std::cerr << "[CONSTACC Interface DEBUG] Resulting extrapolated covariance contains non-finite values!" << std::endl;
                     return result;
 #endif
 
@@ -318,9 +318,9 @@ namespace finalicp {
                 const std::vector<StateVarBase::ConstPtr> state_var{T_10_var, w_01_in1_var, dw_01_in1_var, T_20_var, w_02_in2_var, dw_02_in2_var};
                 const Eigen::Matrix<double, 36, 36> P_1n2 = cov.query(state_var);
 #ifdef DEBUG
-                std::cout << "[CONSTACC DEBUG] Interpolating covariance..." << std::endl;
+                std::cout << "[CONSTACC Interface DEBUG] Interpolating covariance..." << std::endl;
                 if (!P_1n2.allFinite()) {
-                    std::cerr << "[CONSTACC DEBUG] Input covariance P_1n2 contains non-finite values!" << std::endl;
+                    std::cerr << "[CONSTACC Interface DEBUG] Input covariance P_1n2 contains non-finite values!" << std::endl;
                 }
 #endif
 
@@ -351,7 +351,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // addPosePrior
             // ###########################################################
 
             void Interface::addPosePrior(const Time time, const PoseType& T_k0, const Eigen::Matrix<double, 6, 6>& cov) {
@@ -383,7 +383,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // addVelocityPrior
             // ###########################################################
 
             void Interface::addVelocityPrior(const Time time, const VelocityType& w_0k_ink, const Eigen::Matrix<double, 6, 6>& cov) {
@@ -415,7 +415,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // addAccelerationPrior
             // ###########################################################
 
             void Interface::addAccelerationPrior(const Time time, const AccelerationType& dw_0k_ink, const Eigen::Matrix<double, 6, 6>& cov) {
@@ -447,7 +447,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // addStatePrior
             // ###########################################################
 
             void Interface::addStatePrior(const Time time, const PoseType& T_k0, const VelocityType& w_0k_ink, const AccelerationType& dw_0k_ink, const CovType& cov) {
@@ -486,7 +486,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // addPriorCostTerms
             // ###########################################################
 
             void Interface::addPriorCostTerms(Problem& problem) const {
@@ -516,7 +516,7 @@ namespace finalicp {
                     if (knot1->pose()->active() || knot1->velocity()->active() || knot1->acceleration()->active() || knot2->pose()->active() || knot2->velocity()->active() || knot2->acceleration()->active()) {
 #ifdef DEBUG
                         // --- [IMPROVEMENT] Log prior factor creation ---
-                        std::cout << "[CONSTACC DEBUG] Adding motion prior between knots at times: " 
+                        std::cout << "[CONSTACC Interface DEBUG] Adding motion prior between knots at times: " 
                         << std::fixed << knot1->time().seconds() << " and " << knot2->time().seconds() << std::endl;
 #endif
                         // Generate information matrix for GP prior factor
@@ -533,7 +533,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getJacKnot1_
             // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getJacKnot1_(const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) const {
@@ -541,7 +541,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getJacKnot2_
             // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getJacKnot2_(const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) const {
@@ -549,7 +549,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getQ_
             // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getQ_(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
@@ -557,7 +557,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getQinv_
             // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getQinv_(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
@@ -569,7 +569,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getVelocityInterpolator_
             // ###########################################################
 
             auto Interface::getVelocityInterpolator_(const Time time, const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) const -> Evaluable<VelocityType>::Ptr {
@@ -577,7 +577,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getAccelerationInterpolator_
             // ###########################################################
 
             auto Interface::getAccelerationInterpolator_(const Time time, const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) const -> Evaluable<AccelerationType>::Ptr {
@@ -589,7 +589,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getVelocityExtrapolator_
             // ###########################################################
 
             auto Interface::getVelocityExtrapolator_(const Time time, const Variable::ConstPtr& knot) const -> Evaluable<VelocityType>::Ptr {
@@ -597,7 +597,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getAccelerationExtrapolator_
             // ###########################################################
 
             auto Interface::getAccelerationExtrapolator_(const Time time, const Variable::ConstPtr& knot) const -> Evaluable<AccelerationType>::Ptr {
@@ -605,7 +605,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getPriorFactor_
             // ###########################################################
 
             auto Interface::getPriorFactor_(const Variable::ConstPtr& knot1,const Variable::ConstPtr& knot2) const -> Evaluable<Eigen::Matrix<double, 18, 1>>::Ptr {
@@ -613,7 +613,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getQinvPublic
             // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getQinvPublic(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
@@ -621,7 +621,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getQinvPublic
             // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getQinvPublic(const double& dt) const {
@@ -629,7 +629,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getQPublic
             // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getQPublic(const double& dt) const {
@@ -637,7 +637,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getQPublic
             // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getQPublic(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
@@ -645,7 +645,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // get
+            // getTranPublic
             // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getTranPublic(const double& dt) const {

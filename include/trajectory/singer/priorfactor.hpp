@@ -16,10 +16,18 @@ namespace finalicp {
                 using ConstPtr = std::shared_ptr<const PriorFactor>;
                 using Variable = traj::const_acc::Variable;
 
+                // ###########################################################
+                // MakeShared
+                // ###########################################################
+
                 //Factory method to create a shared instance of Variable.
                 static Ptr MakeShared(const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2, const Eigen::Matrix<double, 6, 1>& ad) {
                     return std::make_shared<PriorFactor>(knot1, knot2, ad);
                 }
+                
+                // ###########################################################
+                // PriorFactor
+                // ###########################################################
 
                 //Constructs an `AccelerationExtrapolator` instance.
                 PriorFactor(const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2, const Eigen::Matrix<double, 6, 1>& ad)
@@ -28,12 +36,12 @@ namespace finalicp {
                     Phi_ = getTran(dt, ad);
 #ifdef DEBUG
                     // --- [IMPROVEMENT] Log factor creation and sanity check the transition matrix ---
-                    std::cout << "[SINGER DEBUG | PriorFactor] Creating Singer motion factor between knots at t="
+                    std::cout << "[SINGER PriorFactor DEBUG] Creating Singer motion factor between knots at t="
                             << std::fixed << knot1_->time().seconds() << " and t=" << knot2_->time().seconds()
                             << " (dt=" << dt << "s)." << std::endl;
 
                     if (!Phi_.allFinite()) {
-                        std::cerr << "[SINGER DEBUG | PriorFactor] CRITICAL: Computed transition matrix Phi_ contains non-finite values!" << std::endl;
+                        std::cerr << "[SINGER PriorFactor DEBUG] CRITICAL: Computed transition matrix Phi_ contains non-finite values!" << std::endl;
                     } else {
                         std::cout << "    - Transition matrix norm: " << Phi_.norm() << std::endl;
                     }

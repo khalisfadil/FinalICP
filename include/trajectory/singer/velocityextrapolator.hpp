@@ -17,10 +17,18 @@ namespace finalicp {
                 using ConstPtr = std::shared_ptr<const VelocityExtrapolator>;
                 using Variable = traj::const_acc::Variable;
 
+                // ###########################################################
+                // MakeShared
+                // ###########################################################
+
                 //Factory method to create a shared instance of Variable.
                 static Ptr MakeShared(const Time time, const Variable::ConstPtr& knot, const Eigen::Matrix<double, 6, 1>& ad) {
                     return std::make_shared<VelocityExtrapolator>(time, knot, ad);
                 }
+                
+                // ###########################################################
+                // VelocityExtrapolator
+                // ###########################################################
 
                 //Constructs an `AccelerationExtrapolator` instance.
                 VelocityExtrapolator(const Time time, const Variable::ConstPtr& knot, const Eigen::Matrix<double, 6, 1>& ad)
@@ -31,7 +39,7 @@ namespace finalicp {
                     // --- [IMPROVEMENT] Log creation and sanity-check the transition matrix ---
                     std::cout << " extrapolating velocity with Singer model over dt = " << tau << "s." << std::endl;
                     if (!Phi_.allFinite()) {
-                        std::cerr << "[SINGER DEBUG | VelocityExtrapolator] CRITICAL: Computed transition matrix Phi_ contains non-finite values!" << std::endl;
+                        std::cerr << "[SINGER VelocityExtrapolator DEBUG] CRITICAL: Computed transition matrix Phi_ contains non-finite values!" << std::endl;
                     } else {
                         // Logging the norm is a good quick check for stability.
                         std::cout << "    - Transition matrix norm: " << Phi_.norm() << std::endl;

@@ -8,9 +8,17 @@ namespace finalicp {
     namespace traj {
         namespace const_acc {
 
+            // ###########################################################
+            // MakeShared
+            // ###########################################################
+
             AccelerationInterpolator::Ptr AccelerationInterpolator::MakeShared(const Time time, const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) {
                 return std::make_shared<AccelerationInterpolator>(time, knot1, knot2);
             }
+
+            // ###########################################################
+            // AccelerationInterpolator
+            // ###########################################################
 
             AccelerationInterpolator::AccelerationInterpolator(const Time time, const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2)
                 : knot1_(knot1), knot2_(knot2) {
@@ -28,11 +36,29 @@ namespace finalicp {
                 // Calculate interpolation values
                 omega_ = (Q_tau * Tran_kappa.transpose() * Qinv_T);
                 lambda_ = (Tran_tau - omega_ * Tran_T);
+
+#ifdef DEBUG
+                std::cout << " interpolating acceleration with const_acc model. Interval T: " << T << "s, at tau: " << tau << "s." << std::endl;
+                if (T <= 0) {
+                    std::cerr << "[CONSTACC AccelerationInterpolator DEBUG] CRITICAL: Total time interval T is zero or negative!" << std::endl;
+                }
+                if (!omega_.allFinite() || !lambda_.allFinite()) {
+                    std::cerr << "[CONSTACC AccelerationInterpolator DEBUG] CRITICAL: Final interpolation matrices (omega/lambda) contain non-finite values!" << std::endl;
+                }
+#endif
             }
+
+            // ###########################################################
+            // active
+            // ###########################################################
 
             bool AccelerationInterpolator::active() const {
                     return knot1_->pose()->active() || knot1_->velocity()->active() || knot1_->acceleration()->active() || knot2_->pose()->active() || knot2_->velocity()->active() || knot2_->acceleration()->active();
             }
+
+            // ###########################################################
+            // getRelatedVarKeys
+            // ###########################################################
 
             void AccelerationInterpolator::getRelatedVarKeys(KeySet& keys) const {
                 knot1_->pose()->getRelatedVarKeys(keys);
@@ -42,6 +68,10 @@ namespace finalicp {
                 knot2_->velocity()->getRelatedVarKeys(keys);
                 knot2_->acceleration()->getRelatedVarKeys(keys);
             }
+
+            // ###########################################################
+            // value
+            // ###########################################################
 
             auto AccelerationInterpolator::value() const -> OutType {
                 const auto T1 = knot1_->pose()->value();
@@ -61,8 +91,24 @@ namespace finalicp {
                 // Calculate interpolated velocity
                 const auto w_i = math::se3::vec2jac(xi_i1) * xi_j1;
                 OutType dw_i = math::se3::vec2jac(xi_i1) * (xi_k1 + 0.5 * math::se3::curlyhat(xi_j1) * w_i);
+                
+#ifdef DEBUG
+                if (!w1.allFinite() || !dw1.allFinite() || !w2.allFinite() || !dw2.allFinite()) {
+                    std::cerr << "[CONSTACC AccelerationInterpolator DEBUG | value] CRITICAL: Input knot states are non-finite!" << std::endl;
+                }
+                if (!xi_i1.allFinite() || !xi_j1.allFinite() || !xi_k1.allFinite()) {
+                    std::cerr << "[CONSTACC AccelerationInterpolator DEBUG | value] CRITICAL: Intermediate xi vectors are non-finite!" << std::endl;
+                }
+                if (!dw_i.allFinite()) {
+                    std::cerr << "[CONSTACC AccelerationInterpolator DEBUG | value] CRITICAL: Final interpolated acceleration is non-finite!" << std::endl;
+                }
+#endif
                 return dw_i;
             }
+
+            // ###########################################################
+            // forward
+            // ###########################################################
 
             auto AccelerationInterpolator::forward() const -> Node<OutType>::Ptr {
                 const auto T1 = knot1_->pose()->forward();
@@ -92,8 +138,17 @@ namespace finalicp {
                 return node;
             }
 
+            // ###########################################################
+            // backward
+            // ###########################################################
+
             void AccelerationInterpolator::backward(const Eigen::MatrixXd& lhs, const Node<OutType>::Ptr& node, Jacobians& jacs) const {
                 if (!active()) return;
+#ifdef DEBUG
+                if (!lhs.allFinite()) {
+                    std::cerr << "[CONSTACC AccelerationInterpolator DEBUG | backward] CRITICAL: Incoming derivative (lhs) is non-finite!" << std::endl;
+                }
+#endif
                 const auto T1 = knot1_->pose()->value();
                 const auto w1 = knot1_->velocity()->value();
                 const auto dw1 = knot1_->acceleration()->value();
@@ -127,12 +182,18 @@ namespace finalicp {
                     if (knot1_->pose()->active()) {
                         const auto T1_ = std::static_pointer_cast<Node<InPoseType>>(node->at(0));
                         Eigen::MatrixXd new_lhs = lhs * (-w * T_21.adjoint());
+#ifdef DEBUG
+                        if (!new_lhs.allFinite()) std::cerr << "[CONSTACC AccelerationInterpolator DEBUG | backward] CRITICAL: Derivative to T1 is non-finite!" << std::endl;
+#endif
                         knot1_->pose()->backward(new_lhs, T1_, jacs);
                     }
 
                     if (knot2_->pose()->active()) {
                         const auto T2_ = std::static_pointer_cast<Node<InPoseType>>(node->at(3));
                         Eigen::MatrixXd new_lhs = lhs * w;
+#ifdef DEBUG
+                        if (!new_lhs.allFinite()) std::cerr << "[CONSTACC AccelerationInterpolator DEBUG | backward] CRITICAL: Derivative to T1 is non-finite!" << std::endl;
+#endif
                         knot2_->pose()->backward(new_lhs, T2_, jacs);
                     }
                 }
@@ -140,6 +201,9 @@ namespace finalicp {
                 if (knot1_->velocity()->active()) {
                     const auto w1_ = std::static_pointer_cast<Node<InVelType>>(node->at(1));
                     Eigen::MatrixXd new_lhs = lhs * (J_i1 * lambda_.block<6, 6>(12, 6) + J_prep_2 * lambda_.block<6, 6>(6, 6) + J_prep_3 * lambda_.block<6, 6>(0, 6));
+#ifdef DEBUG
+                        if (!new_lhs.allFinite()) std::cerr << "[CONSTACC AccelerationInterpolator DEBUG | backward] CRITICAL: Derivative to w1 is non-finite!" << std::endl;
+#endif
                     knot1_->velocity()->backward(new_lhs, w1_, jacs);
                 }
 
@@ -148,18 +212,27 @@ namespace finalicp {
                     Eigen::MatrixXd new_lhs = lhs * (J_i1 * (omega_.block<6, 6>(12, 6) * J_21_inv + omega_.block<6, 6>(12, 12) * -0.5 * (math::se3::curlyhat(J_21_inv * w2) - math::se3::curlyhat(w2) * J_21_inv)) +
                             J_prep_2 * (omega_.block<6, 6>(6, 6) * J_21_inv + omega_.block<6, 6>(6, 12) * -0.5 * (math::se3::curlyhat(J_21_inv * w2) - math::se3::curlyhat(w2) * J_21_inv)) +
                             J_prep_3 * (omega_.block<6, 6>(0, 6) * J_21_inv + omega_.block<6, 6>(0, 12) * -0.5 * (math::se3::curlyhat(J_21_inv * w2) - math::se3::curlyhat(w2) * J_21_inv)));
+#ifdef DEBUG
+                    if (!new_lhs.allFinite()) std::cerr << "[CONSTACC AccelerationInterpolator DEBUG | backward] CRITICAL: Derivative to w2 is non-finite!" << std::endl;
+#endif
                     knot2_->velocity()->backward(new_lhs, w2_, jacs);
                 }
 
                 if (knot1_->acceleration()->active()) {
                     const auto dw1_ = std::static_pointer_cast<Node<InAccType>>(node->at(2));
                     Eigen::MatrixXd new_lhs = lhs * (J_i1 * lambda_.block<6, 6>(12, 12) + J_prep_2 * lambda_.block<6, 6>(6, 12) + J_prep_3 * lambda_.block<6, 6>(0, 12));
+#ifdef DEBUG
+                    if (!new_lhs.allFinite()) std::cerr << "[CONSTACC AccelerationInterpolator DEBUG | backward] CRITICAL: Derivative to dw1 is non-finite!" << std::endl;
+#endif
                     knot1_->acceleration()->backward(new_lhs, dw1_, jacs);
                 }
 
                 if (knot2_->acceleration()->active()) {
                     const auto dw2_ = std::static_pointer_cast<Node<InAccType>>(node->at(5));
                     Eigen::MatrixXd new_lhs = lhs * (J_i1 * (omega_.block<6, 6>(12, 12) * J_21_inv) + J_prep_2 * (omega_.block<6, 6>(6, 12) * J_21_inv) + J_prep_3 * (omega_.block<6, 6>(0, 12) * J_21_inv));
+#ifdef DEBUG
+                    if (!new_lhs.allFinite()) std::cerr << "[CONSTACC AccelerationInterpolator DEBUG | backward] CRITICAL: Derivative to dw2 is non-finite!" << std::endl;
+#endif
                     knot2_->acceleration()->backward(new_lhs, dw2_, jacs);
                 }
             }

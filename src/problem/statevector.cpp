@@ -7,6 +7,10 @@
 
 namespace finalicp {
 
+    // ##################################################
+    // clone
+    // ##################################################
+
     StateVector StateVector::clone() const {
         StateVector cloned;
         // map is copied to avoid re-hashing all the entries,
@@ -17,6 +21,10 @@ namespace finalicp {
             it->second.state = it->second.state->clone();
         return cloned;
     }
+
+    // ##################################################
+    // copyValues
+    // ##################################################
 
     void StateVector::copyValues(const StateVector &other) {
         // Check state vector are the same size
@@ -45,6 +53,10 @@ namespace finalicp {
         }
     }
 
+    // ##################################################
+    // addStateVariable
+    // ##################################################
+
     void StateVector::addStateVariable(const StateVarBase::Ptr &state) {
         // Verify that state is not locked
         if (state->locked())
@@ -58,7 +70,7 @@ namespace finalicp {
             throw std::runtime_error("[StateVector::addStateVariable] StateVector already contains the state being added.");
         
 #ifdef DEBUG
-        std::cout << "[SV DEBUG | addStateVariable] Adding state. Key: " << key
+        std::cout << "[StateVector DEBUG | addStateVariable] Adding state. Key: " << key
                   << ", Block Index: " << num_block_entries_
                   << ", Dim: " << state->perturb_dim() << std::endl;
 #endif
@@ -72,9 +84,17 @@ namespace finalicp {
         num_block_entries_++;
     }
 
+    // ##################################################
+    // hasStateVariable
+    // ##################################################
+
     bool StateVector::hasStateVariable(const StateKey &key) const {
         return states_.find(key) != states_.end();
     }
+
+    // ##################################################
+    // getStateVariable
+    // ##################################################
 
     StateVarBase::ConstPtr StateVector::getStateVariable(const StateKey &key) const {
         // Find the StateContainer for key
@@ -89,8 +109,15 @@ namespace finalicp {
         return it->second.state;
     }
 
+    // ##################################################
+    // getNumberOfStates
+    // ##################################################
 
     unsigned int StateVector::getNumberOfStates() const { return states_.size(); }
+
+    // ##################################################
+    // getStateBlockIndex
+    // ##################################################
 
     int StateVector::getStateBlockIndex(const StateKey &key) const {
         // Find the StateContainer for key
@@ -108,6 +135,10 @@ namespace finalicp {
         return it->second.local_block_index;
     }
 
+    // ##################################################
+    // getStateBlockSizes
+    // ##################################################
+
     std::vector<unsigned int> StateVector::getStateBlockSizes() const {
         std::vector<unsigned int> result;
         result.resize(states_.size());
@@ -124,7 +155,7 @@ namespace finalicp {
         // --- [IMPROVEMENT] More concise summary log ---
 #ifdef DEBUG
         std::stringstream ss;
-        ss << "[SV DEBUG | getStateBlockSizes] getStateBlockSizes() -> [";
+        ss << "[StateVector DEBUG | getStateBlockSizes] getStateBlockSizes() -> [";
         for (size_t i = 0; i < result.size(); ++i) {
             ss << result[i] << (i == result.size() - 1 ? "" : ", ");
         }
@@ -135,17 +166,25 @@ namespace finalicp {
         return result;
     }
 
+    // ##################################################
+    // getStateSize
+    // ##################################################
+
     unsigned int StateVector::getStateSize() const {
         const auto sizes = getStateBlockSizes();
         return std::accumulate(sizes.begin(), sizes.end(), (unsigned int)0);
     }
+
+    // ##################################################
+    // update
+    // ##################################################
 
     void StateVector::update(const Eigen::VectorXd &perturbation) {
         // Convert single vector to a block-vector of perturbations (checks sizes)
         BlockVector blk_perturb(getStateBlockSizes(), perturbation);
 
 #ifdef DEBUG
-        std::cout << "[SV DEBUG | update] Updating StateVector with perturbation norm: " << perturbation.norm() << std::endl;
+        std::cout << "[StateVector DEBUG | update] Updating StateVector with perturbation norm: " << perturbation.norm() << std::endl;
 #endif
 
         // Iterate over states and update each

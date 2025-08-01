@@ -10,11 +10,15 @@ namespace finalicp {
 
             using Variable = traj::const_acc::Variable;
 
+            // ###########################################################
+            // getQ
+            // ###########################################################
+
             inline Eigen::Matrix<double, 18, 18> getQ(const double& dt, const Eigen::Matrix<double, 6, 1>& add, const Eigen::Matrix<double, 6, 1>& qcd = Eigen::Matrix<double, 6, 1>::Ones()) {
 #ifdef DEBUG
                 // --- [IMPROVEMENT] Log function call and validate input dt ---
                 if (dt < 0) {
-                    std::cerr << "[SINGER DEBUG | getQ] CRITICAL: Negative time delta dt (" << dt << ") received!" << std::endl;
+                    std::cerr << "[SINGER helper DEBUG | getQ] CRITICAL: Negative time delta dt (" << dt << ") received!" << std::endl;
                 }
 #endif
                 Eigen::Matrix<double, 18, 18> Q = Eigen::Matrix<double, 18, 18>::Zero();
@@ -110,16 +114,20 @@ namespace finalicp {
 #ifdef DEBUG
                 // --- [IMPROVEMENT] Sanity-check final matrix ---
                 if (!Q.allFinite()) {
-                    std::cerr << "[SINGER DEBUG | getQ] CRITICAL: Resulting Q matrix contains non-finite values!" << std::endl;
+                    std::cerr << "[SINGER helper DEBUG | getQ] CRITICAL: Resulting Q matrix contains non-finite values!" << std::endl;
                 }
 #endif
                 return Q;
             }
 
+            // ###########################################################
+            // AccelerationInterpolator
+            // ###########################################################
+
             inline Eigen::Matrix<double, 18, 18> getTran(const double& dt, const Eigen::Matrix<double, 6, 1>& add) {
 #ifdef DEBUG
                 if (dt < 0) {
-                    std::cerr << "[SINGER DEBUG | getTran] CRITICAL: Negative time delta dt (" << dt << ") received!" << std::endl;
+                    std::cerr << "[SINGER helper DEBUG | getTran] CRITICAL: Negative time delta dt (" << dt << ") received!" << std::endl;
                 }
 #endif
                 Eigen::Matrix<double, 18, 18> Tran = Eigen::Matrix<double, 18, 18>::Identity();
@@ -172,11 +180,15 @@ namespace finalicp {
                 Tran.block<6, 6>(0, 6).diagonal() = dt * Eigen::Array<double, 6, 1>::Ones();
 #ifdef DEBUG
                 if (!Tran.allFinite()) {
-                    std::cerr << "[SINGER DEBUG | getTran] CRITICAL: Resulting Tran matrix contains non-finite values!" << std::endl;
+                    std::cerr << "[SINGER helper DEBUG | getTran] CRITICAL: Resulting Tran matrix contains non-finite values!" << std::endl;
                 }
 #endif
                 return Tran;
             }
+
+            // ###########################################################
+            // AccelerationInterpolator
+            // ###########################################################
 
             inline Eigen::Matrix<double, 18, 18> getJacKnot1(const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2, const Eigen::Matrix<double, 6, 1>& ad) {
                 // precompute
@@ -190,12 +202,12 @@ namespace finalicp {
                 const auto dw2 = knot2->acceleration()->value();
 #ifdef DEBUG
                 // --- [IMPROVEMENT] Log function call and check intermediate values ---
-                std::cout << "    -> [SINGER DEBUG | getJacKnot1] Calculating Jacobian over dt=" << dt << "s." << std::endl;
+                std::cout << "    -> [SINGER helper DEBUG | getJacKnot1] Calculating Jacobian over dt=" << dt << "s." << std::endl;
                 if (!Phi.allFinite()) {
-                    std::cerr << "[SINGER DEBUG | getJacKnot1] CRITICAL: Intermediate transition matrix Phi contains non-finite values!" << std::endl;
+                    std::cerr << "[SINGER helper DEBUG | getJacKnot1] CRITICAL: Intermediate transition matrix Phi contains non-finite values!" << std::endl;
                 }
                 if (!J_21_inv.allFinite()) {
-                    std::cerr << "[SINGER DEBUG | getJacKnot1] CRITICAL: Intermediate inverse Jacobian J_21_inv contains non-finite values!" << std::endl;
+                    std::cerr << "[SINGER helper DEBUG | getJacKnot1] CRITICAL: Intermediate inverse Jacobian J_21_inv contains non-finite values!" << std::endl;
                 }
 #endif
                 // init jacobian
@@ -217,7 +229,7 @@ namespace finalicp {
                 jacobian.block<6, 6>(12, 12) = -Phi.block<6, 6>(12, 12);
 #ifdef DEBUG
                 if (!jacobian.allFinite()) {
-                    std::cerr << "[SINGER DEBUG | getJacKnot1] CRITICAL: Final Jacobian matrix contains non-finite values!" << std::endl;
+                    std::cerr << "[SINGER helper DEBUG | getJacKnot1] CRITICAL: Final Jacobian matrix contains non-finite values!" << std::endl;
                 }
 #endif
                 return jacobian;

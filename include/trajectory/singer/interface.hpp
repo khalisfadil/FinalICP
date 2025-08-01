@@ -29,21 +29,33 @@ namespace finalicp {
                 using VelocityType = Eigen::Matrix<double, 6, 1>;
                 using AccelerationType = Eigen::Matrix<double, 6, 1>;
 
+                // ###########################################################
+                // MakeShared
+                // ###########################################################
+
                 //Factory method to create a shared instance of Variable.
                 static Ptr MakeShared(const Eigen::Matrix<double, 6, 1>& alpha_diag = Eigen::Matrix<double, 6, 1>::Ones(), const Eigen::Matrix<double, 6, 1>& Qc_diag = Eigen::Matrix<double, 6, 1>::Ones()) {
                     return std::make_shared<Interface>(alpha_diag, Qc_diag);
                 }
+                
+                // ###########################################################
+                // Interface
+                // ###########################################################
 
                 //Constructs an `AccelerationExtrapolator` instance.
                 Interface(const Eigen::Matrix<double, 6, 1>& alpha_diag = Eigen::Matrix<double, 6, 1>::Ones(), const Eigen::Matrix<double, 6, 1>& Qc_diag = Eigen::Matrix<double, 6, 1>::Ones())
                     : traj::const_acc::Interface(Qc_diag), alpha_diag_(alpha_diag) {
 #ifdef DEBUG
                     // --- [IMPROVEMENT] Log creation and configuration parameters ---
-                    std::cout << "[SINGER DEBUG | Interface] Creating Singer::Interface." << std::endl;
+                    std::cout << "[SINGER Interface DEBUG] Creating Singer::Interface." << std::endl;
                     std::cout << "    - Alpha Diag: " << alpha_diag_.transpose() << std::endl;
                     std::cout << "    - Qc Diag:    " << Qc_diag_.transpose() << std::endl;
 #endif
                     }
+                
+                // ###########################################################
+                // getQinvPublic
+                // ###########################################################
 
                 //Checks if the extrapolator depends on any active variables
                 Eigen::Matrix<double, 18, 18> getQinvPublic(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {

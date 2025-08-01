@@ -26,7 +26,7 @@ namespace finalicp {
     void SlidingWindowFilter::addStateVariable(const std::vector<StateVarBase::Ptr>& variables) {
         for (const auto& var : variables) {
 #ifdef DEBUG
-            std::cout << "[SWF DEBUG | addStateVariable] Adding State Variable. Key: " << var->key() << std::endl;
+            std::cout << "[SlidingWindowFilter DEBUG | addStateVariable] Adding State Variable. Key: " << var->key() << std::endl;
 #endif
             const auto res = variables_.try_emplace(var->key(), var, false);
             if (!res.second) throw std::runtime_error("duplicated variable key");
@@ -47,7 +47,7 @@ namespace finalicp {
         if (variables.empty()) return;
 
 #ifdef DEBUG
-            std::cout << "--- [SWF DEBUG | marginalizeVariable] Starting Marginalization for " << variables.size() << " variables ---" << std::endl;
+            std::cout << "--- [SlidingWindowFilter DEBUG | marginalizeVariable] Starting Marginalization for " << variables.size() << " variables ---" << std::endl;
 #endif
 
         ///
@@ -140,7 +140,7 @@ namespace finalicp {
 #ifdef DEBUG
             Eigen::FullPivLU<Eigen::MatrixXd> lu(A00);
             if (!lu.isInvertible()) {
-                std::cerr << "[SWF DEBUG | marginalizeVariable] CRITICAL: Matrix block A00 is not invertible during marginalization! System may be ill-conditioned." << std::endl;
+                std::cerr << "[SlidingWindowFilter DEBUG | marginalizeVariable] CRITICAL: Matrix block A00 is not invertible during marginalization! System may be ill-conditioned." << std::endl;
                 // You might want to throw an exception here in a real application
             }
 #endif
@@ -173,7 +173,7 @@ namespace finalicp {
         }
         getStateVector();
 #ifdef DEBUG
-        std::cout << "--- [SWF DEBUG | marginalizeVariable] Marginalization Complete. " << variables_.size() << " variables remain. ---" << std::endl;
+        std::cout << "--- [SlidingWindowFilter DEBUG | marginalizeVariable] Marginalization Complete. " << variables_.size() << " variables remain. ---" << std::endl;
 #endif
     }
 
@@ -188,7 +188,7 @@ namespace finalicp {
 #ifdef DEBUG
         // --- [IMPROVEMENT] Log cost term addition and its connections ---
         std::stringstream ss;
-        ss << "[SWF DEBUG | addCostTerm] Adding Cost Term. Connects keys: { ";
+        ss << "[SlidingWindowFilter DEBUG | addCostTerm] Adding Cost Term. Connects keys: { ";
         for(const auto& key : related_keys) { ss << key << " "; }
         ss << "}";
         std::cout << ss.str() << std::endl;
@@ -265,7 +265,7 @@ namespace finalicp {
         }
 #ifdef DEBUG
         // --- [IMPROVEMENT] Log the partitioning of the state vector ---
-        std::cout << "[SWF DEBUG | getStateVector] getStateVector called. Partitioning: "
+        std::cout << "[SlidingWindowFilter DEBUG | getStateVector] getStateVector called. Partitioning: "
                 << marginalize_state_vector_->getNumberOfStates() << " to be marginalized, "
                 << active_state_vector_->getNumberOfStates() << " active." << std::endl;
 #endif
@@ -280,7 +280,7 @@ namespace finalicp {
             Eigen::SparseMatrix<double> &approximate_hessian,
             Eigen::VectorXd &gradient_vector) const {
 #ifdef DEBUG
-        std::cout << "[SWF DEBUG | buildGaussNewtonTerms] buildGaussNewtonTerms called for the active window." << std::endl;
+        std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] buildGaussNewtonTerms called for the active window." << std::endl;
 #endif
         //
         std::vector<unsigned int> sqSizes = state_vector_->getStateBlockSizes();

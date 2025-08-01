@@ -17,11 +17,19 @@ namespace finalicp {
                 using ConstPtr = std::shared_ptr<const VelocityInterpolator>;
                 using Variable = traj::const_acc::Variable;
 
+                // ###########################################################
+                // PriorFactor
+                // ###########################################################
+
                 //Factory method to create a shared instance of Variable.
                 static Ptr MakeShared(const Time time, const Variable::ConstPtr& knot1,const Variable::ConstPtr& knot2,
                                         const Eigen::Matrix<double, 6, 1>& ad) {
                     return std::make_shared<VelocityInterpolator>(time, knot1, knot2, ad);
                 }
+                
+                // ###########################################################
+                // PriorFactor
+                // ###########################################################
 
                 //Constructs an `AccelerationExtrapolator` instance.
                 VelocityInterpolator(const Time time, const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2, const Eigen::Matrix<double, 6, 1>& ad)
@@ -34,7 +42,7 @@ namespace finalicp {
 #ifdef DEBUG
                     std::cout << " interpolating velocity with Singer model. Interval T: " << T << "s, at tau: " << tau << "s." << std::endl;
                     if (T <= 0) {
-                        std::cerr << "[SINGER DEBUG | VelocityInterpolator] CRITICAL: Total time interval T is zero or negative!" << std::endl;
+                        std::cerr << "[SINGER VelocityInterpolator DEBUG] CRITICAL: Total time interval T is zero or negative!" << std::endl;
                     }
 #endif
 
@@ -49,7 +57,7 @@ namespace finalicp {
                     // --- [IMPROVEMENT] Sanity-check matrix inversion ---
                     Eigen::FullPivLU<Eigen::Matrix<double, 18, 18>> lu(Q_T);
                     if (!lu.isInvertible()) {
-                        std::cerr << "[SINGER DEBUG | VelocityInterpolator] CRITICAL: Process noise matrix Q_T is not invertible! Cannot compute interpolation matrices." << std::endl;
+                        std::cerr << "[SINGER VelocityInterpolator DEBUG] CRITICAL: Process noise matrix Q_T is not invertible! Cannot compute interpolation matrices." << std::endl;
                         // Set to identity to avoid crashing, but the result will be wrong.
                         omega_.setIdentity();
                         lambda_.setIdentity();
@@ -63,7 +71,7 @@ namespace finalicp {
 #ifdef DEBUG
                     // --- [IMPROVEMENT] Sanity-check final interpolation matrices ---
                     if (!omega_.allFinite() || !lambda_.allFinite()) {
-                        std::cerr << "[SINGER DEBUG | VelocityInterpolator] CRITICAL: Final interpolation matrices (omega/lambda) contain non-finite values!" << std::endl;
+                        std::cerr << "[SINGER VelocityInterpolator DEBUG] CRITICAL: Final interpolation matrices (omega/lambda) contain non-finite values!" << std::endl;
                     } else {
                         std::cout << "    - Omega norm: " << omega_.norm() << ", Lambda norm: " << lambda_.norm() << std::endl;
                     }
