@@ -200,13 +200,6 @@ namespace finalicp {
                 // extrapolate after last entry
                 if (it1 == knot_map_.end()) {
                     --it1;  // should be safe, as we checked that the map was not empty..
-#ifdef DEBUG
-                    std::cout << "[CONSTACC DEBUG] Extrapolating covariance..." << std::endl;
-                    if (!P_end.allFinite()) std::cerr << "[CONSTACC DEBUG] Input covariance P_end contains non-finite values!" << std::endl;
-                    const CovType result = E_t1_inv * (F_t1 * P_end * F_t1.transpose() + Qt1) * E_t1_inv.transpose();
-                    if (!result.allFinite()) std::cerr << "[CONSTACC DEBUG] Resulting extrapolated covariance contains non-finite values!" << std::endl;
-                    return result;
-#endif
 
                     const auto& endKnot = it1->second;
                     const auto T_k0 = endKnot->pose();
@@ -241,6 +234,14 @@ namespace finalicp {
                     // end knot covariance
                     const std::vector<StateVarBase::ConstPtr> state_var{T_k0_var, w_0k_ink_var, dw_0k_ink_var};
                     const Eigen::Matrix<double, 18, 18> P_end = cov.query(state_var);
+
+#ifdef DEBUG
+                    std::cout << "[CONSTACC DEBUG] Extrapolating covariance..." << std::endl;
+                    if (!P_end.allFinite()) std::cerr << "[CONSTACC DEBUG] Input covariance P_end contains non-finite values!" << std::endl;
+                    const CovType result = E_t1_inv * (F_t1 * P_end * F_t1.transpose() + Qt1) * E_t1_inv.transpose();
+                    if (!result.allFinite()) std::cerr << "[CONSTACC DEBUG] Resulting extrapolated covariance contains non-finite values!" << std::endl;
+                    return result;
+#endif
 
                     // Compute covariance
                     return E_t1_inv * (F_t1 * P_end * F_t1.transpose() + Qt1) * E_t1_inv.transpose();
