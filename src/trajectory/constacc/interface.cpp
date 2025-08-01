@@ -64,9 +64,9 @@ namespace finalicp {
 
                 // Check if time is passed the last entry
                 if (it1 == knot_map_.end()) {
-#ifdef DEBUG
-        std::cout << "[CONSTACC DEBUG] Extrapolating pose forward from last knot at time: " << (--knot_map_.end())->first.seconds() << std::endl;
-#endif
+// #ifdef DEBUG
+//                 std::cout << "[CONSTACC DEBUG] Extrapolating pose forward from last knot at time: " << (--knot_map_.end())->first.seconds() << std::endl;
+// #endif
                     --it1;  // should be safe, as we checked that the map was not empty..
                     const auto& endKnot = it1->second;
                     return getPoseExtrapolator_(time, endKnot);
@@ -74,16 +74,16 @@ namespace finalicp {
 
                 // Check if we requested time exactly
                 if (it1->second->time() == time) {
-#ifdef DEBUG
-                    std::cout << "[CONSTACC DEBUG] Exact pose query on knot at time: " << time.seconds() << std::endl;
-#endif
+// #ifdef DEBUG
+//                     std::cout << "[CONSTACC DEBUG] Exact pose query on knot at time: " << time.seconds() << std::endl;
+// #endif
                     return it1->second->pose();
                 }
                 // Check if we requested before first time
                 if (it1 == knot_map_.begin()) {
-#ifdef DEBUG
-        std::cout << "[CONSTACC DEBUG] Extrapolating pose backward from first knot at time: " << it1->first.seconds() << std::endl;
-#endif
+// #ifdef DEBUG
+//                 std::cout << "[CONSTACC DEBUG] Extrapolating pose backward from first knot at time: " << it1->first.seconds() << std::endl;
+// #endif
                     const auto& startKnot = it1->second;
                     return getPoseExtrapolator_(time, startKnot);
                 }
@@ -91,9 +91,9 @@ namespace finalicp {
                 // Get iterators bounding the time interval
                 auto it2 = it1;
                 --it1;
-#ifdef DEBUG
-                std::cout << "[CONSTACC DEBUG] Interpolating pose between knots at times: " << it1->first.seconds() << " and " << it2->first.seconds() << std::endl;
-#endif
+// #ifdef DEBUG
+//                 std::cout << "[CONSTACC DEBUG] Interpolating pose between knots at times: " << it1->first.seconds() << " and " << it2->first.seconds() << std::endl;
+// #endif
                 if (time <= it1->second->time() || time >= it2->second->time())
                     throw std::runtime_error("Requested interpolation at an invalid time: " + std::to_string(time.seconds()) + " not in (" +
                         std::to_string(it1->second->time().seconds()) + ", " +
