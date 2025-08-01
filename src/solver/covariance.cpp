@@ -6,38 +6,90 @@
 
 namespace finalicp {
 
+    // ###########################################################
+    // Covariance
+    // ###########################################################
+
     Covariance::Covariance(Problem& problem)
             : state_vector_(problem.getStateVector()),
             hessian_solver_(std::make_shared<SolverType>()) {
+#ifdef DEBUG
+        std::cout << "[Covariance DEBUG] Constructing from Problem. Building and factorizing Hessian..." << std::endl;
+#endif
         Eigen::SparseMatrix<double> approx_hessian;
         Eigen::VectorXd gradient_vector;
         problem.buildGaussNewtonTerms(approx_hessian, gradient_vector);
+#ifdef DEBUG
+        if (!approx_hessian.coeffs().allFinite()) {
+            std::cerr << "[Covariance DEBUG] CRITICAL: Hessian built from problem contains non-finite values!" << std::endl;
+        }
+#endif
         hessian_solver_->analyzePattern(approx_hessian);
         hessian_solver_->factorize(approx_hessian);
         if (hessian_solver_->info() != Eigen::Success) {
-            throw std::runtime_error(
-                "During steam solve, Eigen LLT decomposition failed. "
-                "It is possible that the matrix was ill-conditioned, in which case "
-                "adding a prior may help. On the other hand, it is also possible that "
-                "the problem you've constructed is not positive semi-definite.");
+            std::string error_msg = "[Covariance] Eigen LLT decomposition failed. ";
+#ifdef DEBUG
+            switch(hessian_solver_->info()) {
+                case Eigen::NumericalIssue:
+                    error_msg += "Reason: Numerical issue. The matrix is likely not positive-definite or is ill-conditioned.";
+                    break;
+                case Eigen::NoConvergence:
+                    error_msg += "Reason: No convergence.";
+                    break;
+                case Eigen::InvalidInput:
+                    error_msg += "Reason: Invalid input.";
+                    break;
+                default:
+                    error_msg += "Reason: Unknown.";
+                    break;
+            }
+#endif
+             throw std::runtime_error(error_msg);
         }
+#ifdef DEBUG
+        std::cout << "    - Hessian factorization successful." << std::endl;
+#endif
     }
 
+    // ###########################################################
+    // Covariance
+    // ###########################################################
+
     Covariance::Covariance(GaussNewtonSolver& solver)
-    : state_vector_(solver.state_vector()), hessian_solver_(solver.solver()) {}
+    : state_vector_(solver.state_vector()), hessian_solver_(solver.solver()) {
+#ifdef DEBUG
+        std::cout << "[Covariance DEBUG] Constructing from existing solver. Reusing factorization." << std::endl;
+#endif
+    }
+
+    // ###########################################################
+    // query
+    // ###########################################################
 
     Eigen::MatrixXd Covariance::query(const StateVarBase::ConstPtr& var) const {
         return query(std::vector<StateVarBase::ConstPtr>{var});
     }
+
+    // ###########################################################
+    // query
+    // ###########################################################
 
     Eigen::MatrixXd Covariance::query(const StateVarBase::ConstPtr& rvar, const StateVarBase::ConstPtr& cvar) const {
         return query(std::vector<StateVarBase::ConstPtr>{rvar},
                 std::vector<StateVarBase::ConstPtr>{cvar});
     }
 
+    // ###########################################################
+    // query
+    // ###########################################################
+
     Eigen::MatrixXd Covariance::query(const std::vector<StateVarBase::ConstPtr>& vars) const {
         return query(vars, vars);
     }
+
+    // ###########################################################
+    // query
+    // ###########################################################
 
     Eigen::MatrixXd Covariance::query(const std::vector<StateVarBase::ConstPtr>& rvars, const std::vector<StateVarBase::ConstPtr>& cvars) const {
         const auto state_vector = state_vector_.lock();
@@ -51,6 +103,17 @@ namespace finalicp {
         // Fixed sizes
         const auto num_row_vars = rvars.size();
         const auto num_col_vars = cvars.size();
+
+#ifdef DEBUG
+        // --- [IMPROVEMENT] Log which variables are being queried ---
+        std::stringstream ss;
+        ss << "    - Querying covariance. Rows: { ";
+        for(const auto& var : rvars) { ss << var->key() << " "; }
+        ss << "}, Cols: { ";
+        for(const auto& var : cvars) { ss << var->key() << " "; }
+        ss << "}";
+        std::cout << ss.str() << std::endl;
+#endif
 
         // Look up block indexes
         std::vector<unsigned int> blk_row_indices;
@@ -96,6 +159,18 @@ namespace finalicp {
                 projection(scalar_col_index) = 1.0;
                 Eigen::VectorXd x = hessian_solver_->solve(projection);
                 projection(scalar_col_index) = 0.0;
+#ifdef DEBUG
+                // --- [IMPROVEMENT] Check the result of the linear solve ---
+                // Log only for the very first column to avoid spam
+                if (c == 0 && j == 0) {
+                    std::cout << "      - Solving for first column of covariance block..." << std::endl;
+                    if (!x.allFinite()) {
+                        std::cerr << "      CRITICAL: Result of Hx=b solve is non-finite! Hessian is likely ill-conditioned." << std::endl;
+                    } else {
+                        std::cout << "      - Solution norm: " << x.norm() << std::endl;
+                    }
+                }
+#endif
 
                 // For each block row
                 for (unsigned int r = 0; r < num_row_vars; r++) {
@@ -119,6 +194,11 @@ namespace finalicp {
             }
         }
 
+#ifdef DEBUG
+        if (!cov.allFinite()) {
+            std::cerr << "[Covariance DEBUG] CRITICAL: Final assembled covariance block contains non-finite values!" << std::endl;
+        }
+#endif
         return cov;
     }
 } // namespace finaleicp

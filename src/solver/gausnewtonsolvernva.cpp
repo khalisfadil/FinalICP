@@ -9,8 +9,16 @@
 
 namespace finalicp {
 
+    // ###########################################################
+    // GaussNewtonSolverNVA
+    // ###########################################################
+
     GaussNewtonSolverNVA::GaussNewtonSolverNVA(Problem& problem, const Params& params)
     : GaussNewtonSolver(problem, params), params_(params) {}
+
+    // ###########################################################
+    // linearizeSolveAndUpdate
+    // ###########################################################
 
     bool GaussNewtonSolverNVA::linearizeSolveAndUpdate(double& cost, double& grad_norm) {
         Timer iter_timer;
@@ -129,6 +137,10 @@ namespace finalicp {
 
         return true;
     }
+
+    // ###########################################################
+    // solveGaussNewton
+    // ###########################################################
 
     Eigen::VectorXd GaussNewtonSolverNVA::solveGaussNewton(const Eigen::SparseMatrix<double>& approximate_hessian, const Eigen::VectorXd& gradient_vector) {
 
