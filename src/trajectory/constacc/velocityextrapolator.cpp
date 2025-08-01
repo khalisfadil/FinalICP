@@ -70,9 +70,6 @@ namespace finalicp {
                 }
 #endif
                 return OutType(xi_j1);
-
-                const Eigen::Matrix<double, 6, 1> xi_j1 = Phi_.block<6, 6>(6, 6) * knot_->velocity()->value() + Phi_.block<6, 6>(6, 12) * knot_->acceleration()->value();
-                return OutType(xi_j1);  // approximation holds as long as xi_i1 is small.
             }
 
             // ###########################################################
