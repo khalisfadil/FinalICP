@@ -604,10 +604,7 @@ namespace finalicp {
         for (size_t i = 0; i < 10; ++i) {
             try {
                 if (!active[i]) continue;
-#ifdef DEBUG
-                // --- [IMPROVEMENT] Add logging to the scatter process ---
-                std::cout << "    - Scattering contribution from local block (" << i << "," << j << ") to global block (" << row << "," << col << ")" << std::endl;
-#endif
+
                 const auto& key1 = keys[i];
                 unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
 
@@ -642,6 +639,11 @@ namespace finalicp {
                     // omp_set_lock(&entry.lock);
                     entry.data += newHessianTerm;
                     // omp_unset_lock(&entry.lock);
+
+#ifdef DEBUG
+                    // --- [IMPROVEMENT] Add logging to the scatter process ---
+                    std::cout << "    - Scattering contribution from local block (" << i << "," << j << ") to global block (" << row << "," << col << ")" << std::endl;
+#endif
                 }
             } catch (const std::exception& e) {
                 std::cerr << "[IMUSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ": " << e.what() << std::endl;

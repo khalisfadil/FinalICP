@@ -132,7 +132,7 @@ namespace finalicp {
         unsigned int idx = it->second.local_block_index;
 
         // Return block index
-        return it->second.local_block_index;
+        return idx;
     }
 
     // ##################################################
