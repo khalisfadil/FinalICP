@@ -17,23 +17,43 @@
 namespace finalicp {
     namespace traj {
         namespace const_acc {
+
+            // ###########################################################
+            // Interafce
+            // ###########################################################
             
             auto Interface::MakeShared(const Eigen::Matrix<double, 6, 1>& Qc_diag) -> Ptr {
                 return std::make_shared<Interface>(Qc_diag);
             }
+
+            // ###########################################################
+            // Interafce
+            // ###########################################################
 
             Interface::Interface(const Eigen::Matrix<double, 6, 1>& Qc_diag)
                 : Qc_diag_(Qc_diag) {}
 
             void Interface::add(const Time time, const Evaluable<PoseType>::Ptr& T_k0, const Evaluable<VelocityType>::Ptr& w_0k_ink, const Evaluable<VelocityType>::Ptr& dw_0k_ink) {
                 if (knot_map_.find(time) != knot_map_.end()) throw std::runtime_error("adding knot at duplicated time");
+#ifdef DEBUG
+                // --- [IMPROVEMENT] Log knot addition ---
+                std::cout << "[CONSTACC DEBUG] Adding knot at time: " << std::fixed << time.seconds() << std::endl;
+#endif
                 const auto knot = std::make_shared<Variable>(time, T_k0, w_0k_ink, dw_0k_ink);
                 knot_map_.insert(knot_map_.end(), std::pair<Time, Variable::Ptr>(time, knot));
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             Variable::ConstPtr Interface::get(const Time time) const {
                 return knot_map_.at(time);
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             auto Interface::getPoseInterpolator(const Time time) const -> Evaluable<PoseType>::ConstPtr {
                 // Check that map is not empty
@@ -44,16 +64,26 @@ namespace finalicp {
 
                 // Check if time is passed the last entry
                 if (it1 == knot_map_.end()) {
+#ifdef DEBUG
+        std::cout << "[CONSTACC DEBUG] Extrapolating pose forward from last knot at time: " << (--knot_map_.end())->first.seconds() << std::endl;
+#endif
                     --it1;  // should be safe, as we checked that the map was not empty..
                     const auto& endKnot = it1->second;
                     return getPoseExtrapolator_(time, endKnot);
                 }
 
                 // Check if we requested time exactly
-                if (it1->second->time() == time) return it1->second->pose();
-
+                if (it1->second->time() == time) {
+#ifdef DEBUG
+                    std::cout << "[CONSTACC DEBUG] Exact pose query on knot at time: " << time.seconds() << std::endl;
+#endif
+                    return it1->second->pose();
+                }
                 // Check if we requested before first time
                 if (it1 == knot_map_.begin()) {
+#ifdef DEBUG
+        std::cout << "[CONSTACC DEBUG] Extrapolating pose backward from first knot at time: " << it1->first.seconds() << std::endl;
+#endif
                     const auto& startKnot = it1->second;
                     return getPoseExtrapolator_(time, startKnot);
                 }
@@ -61,6 +91,9 @@ namespace finalicp {
                 // Get iterators bounding the time interval
                 auto it2 = it1;
                 --it1;
+#ifdef DEBUG
+                std::cout << "[CONSTACC DEBUG] Interpolating pose between knots at times: " << it1->first.seconds() << " and " << it2->first.seconds() << std::endl;
+#endif
                 if (time <= it1->second->time() || time >= it2->second->time())
                     throw std::runtime_error("Requested interpolation at an invalid time: " + std::to_string(time.seconds()) + " not in (" +
                         std::to_string(it1->second->time().seconds()) + ", " +
@@ -69,6 +102,10 @@ namespace finalicp {
                 // Create interpolated evaluator
                 return getPoseInterpolator_(time, it1->second, it2->second);
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             auto Interface::getVelocityInterpolator(const Time time) const -> Evaluable<VelocityType>::ConstPtr {
                 // Check that map is not empty
@@ -105,6 +142,10 @@ namespace finalicp {
                 // Create interpolated evaluator
                 return getVelocityInterpolator_(time, it1->second, it2->second);
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             auto Interface::getAccelerationInterpolator(const Time time) const -> Evaluable<AccelerationType>::ConstPtr {
                 // Check that map is not empty
@@ -143,6 +184,10 @@ namespace finalicp {
                 return getAccelerationInterpolator_(time, it1->second, it2->second);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             auto Interface::getCovariance(const Covariance& cov, const Time time) -> CovType {
                 // clang-format off
 
@@ -155,6 +200,13 @@ namespace finalicp {
                 // extrapolate after last entry
                 if (it1 == knot_map_.end()) {
                     --it1;  // should be safe, as we checked that the map was not empty..
+#ifdef DEBUG
+                    std::cout << "[CONSTACC DEBUG] Extrapolating covariance..." << std::endl;
+                    if (!P_end.allFinite()) std::cerr << "[CONSTACC DEBUG] Input covariance P_end contains non-finite values!" << std::endl;
+                    const CovType result = E_t1_inv * (F_t1 * P_end * F_t1.transpose() + Qt1) * E_t1_inv.transpose();
+                    if (!result.allFinite()) std::cerr << "[CONSTACC DEBUG] Resulting extrapolated covariance contains non-finite values!" << std::endl;
+                    return result;
+#endif
 
                     const auto& endKnot = it1->second;
                     const auto T_k0 = endKnot->pose();
@@ -264,6 +316,12 @@ namespace finalicp {
                 // Covariance of knot1 and knot2
                 const std::vector<StateVarBase::ConstPtr> state_var{T_10_var, w_01_in1_var, dw_01_in1_var, T_20_var, w_02_in2_var, dw_02_in2_var};
                 const Eigen::Matrix<double, 36, 36> P_1n2 = cov.query(state_var);
+#ifdef DEBUG
+                std::cout << "[CONSTACC DEBUG] Interpolating covariance..." << std::endl;
+                if (!P_1n2.allFinite()) {
+                    std::cerr << "[CONSTACC DEBUG] Input covariance P_1n2 contains non-finite values!" << std::endl;
+                }
+#endif
 
                 // Helper matrices
                 Eigen::Matrix<double, 36, 18> A = Eigen::Matrix<double, 36, 18>::Zero();
@@ -290,6 +348,10 @@ namespace finalicp {
                 return P_t_inv.inverse();
                 // clang-format on
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             void Interface::addPosePrior(const Time time, const PoseType& T_k0, const Eigen::Matrix<double, 6, 6>& cov) {
                 if (pose_prior_factor_ != nullptr)
@@ -319,6 +381,10 @@ namespace finalicp {
                 pose_prior_factor_ = WeightedLeastSqCostTerm<6>::MakeShared(error_func, noise_model, loss_func);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             void Interface::addVelocityPrior(const Time time, const VelocityType& w_0k_ink, const Eigen::Matrix<double, 6, 6>& cov) {
                 if (vel_prior_factor_ != nullptr)
                 throw std::runtime_error("can only add one velocity prior.");
@@ -347,6 +413,10 @@ namespace finalicp {
                 vel_prior_factor_ = WeightedLeastSqCostTerm<6>::MakeShared(error_func, noise_model, loss_func);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             void Interface::addAccelerationPrior(const Time time, const AccelerationType& dw_0k_ink, const Eigen::Matrix<double, 6, 6>& cov) {
                 if (acc_prior_factor_ != nullptr)
                 throw std::runtime_error("can only add one acceleration prior.");
@@ -374,6 +444,10 @@ namespace finalicp {
                 // Create cost term
                 acc_prior_factor_ = WeightedLeastSqCostTerm<6>::MakeShared(error_func, noise_model, loss_func);
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             void Interface::addStatePrior(const Time time, const PoseType& T_k0, const VelocityType& w_0k_ink, const AccelerationType& dw_0k_ink, const CovType& cov) {
                 // Only allow adding 1 prior
@@ -410,6 +484,10 @@ namespace finalicp {
                 state_prior_factor_ = WeightedLeastSqCostTerm<18>::MakeShared(error_func, noise_model, loss_func);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             void Interface::addPriorCostTerms(Problem& problem) const {
                 // If empty, return none
                 if (knot_map_.empty()) return;
@@ -435,30 +513,51 @@ namespace finalicp {
 
                     // Check if any of the variables are unlocked
                     if (knot1->pose()->active() || knot1->velocity()->active() || knot1->acceleration()->active() || knot2->pose()->active() || knot2->velocity()->active() || knot2->acceleration()->active()) {
-                    // Generate information matrix for GP prior factor
-                    auto Qinv = getQinv_((knot2->time() - knot1->time()).seconds(), Qc_diag_);
-                    const auto noise_model = std::make_shared<StaticNoiseModel<18>>(Qinv, NoiseType::INFORMATION);
-                    //
-                    const auto error_function = getPriorFactor_(knot1, knot2);
-                    // Create cost term
-                    const auto cost_term = std::make_shared<WeightedLeastSqCostTerm<18>>(error_function, noise_model, loss_function);
-                    //
-                    problem.addCostTerm(cost_term);
+#ifdef DEBUG
+                        // --- [IMPROVEMENT] Log prior factor creation ---
+                        std::cout << "[CONSTACC DEBUG] Adding motion prior between knots at times: " 
+                        << std::fixed << knot1->time().seconds() << " and " << knot2->time().seconds() << std::endl;
+#endif
+                        // Generate information matrix for GP prior factor
+                        auto Qinv = getQinv_((knot2->time() - knot1->time()).seconds(), Qc_diag_);
+                        const auto noise_model = std::make_shared<StaticNoiseModel<18>>(Qinv, NoiseType::INFORMATION);
+                        //
+                        const auto error_function = getPriorFactor_(knot1, knot2);
+                        // Create cost term
+                        const auto cost_term = std::make_shared<WeightedLeastSqCostTerm<18>>(error_function, noise_model, loss_function);
+                        //
+                        problem.addCostTerm(cost_term);
                     }
                 }
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getJacKnot1_(const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) const {
                 return getJacKnot1(knot1, knot2);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             Eigen::Matrix<double, 18, 18> Interface::getJacKnot2_(const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) const {
                 return getJacKnot2(knot1, knot2);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             Eigen::Matrix<double, 18, 18> Interface::getQ_(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
                 return getQ(dt, Qc_diag);
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getQinv_(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
                 return getQinv(dt, Qc_diag);
@@ -468,9 +567,17 @@ namespace finalicp {
                 return PoseInterpolator::MakeShared(time, knot1, knot2);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             auto Interface::getVelocityInterpolator_(const Time time, const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) const -> Evaluable<VelocityType>::Ptr {
                 return VelocityInterpolator::MakeShared(time, knot1, knot2);
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             auto Interface::getAccelerationInterpolator_(const Time time, const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) const -> Evaluable<AccelerationType>::Ptr {
                 return AccelerationInterpolator::MakeShared(time, knot1, knot2);
@@ -480,33 +587,65 @@ namespace finalicp {
                 return PoseExtrapolator::MakeShared(time, knot);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             auto Interface::getVelocityExtrapolator_(const Time time, const Variable::ConstPtr& knot) const -> Evaluable<VelocityType>::Ptr {
                 return VelocityExtrapolator::MakeShared(time, knot);
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             auto Interface::getAccelerationExtrapolator_(const Time time, const Variable::ConstPtr& knot) const -> Evaluable<AccelerationType>::Ptr {
                 return AccelerationExtrapolator::MakeShared(time, knot);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             auto Interface::getPriorFactor_(const Variable::ConstPtr& knot1,const Variable::ConstPtr& knot2) const -> Evaluable<Eigen::Matrix<double, 18, 1>>::Ptr {
                 return PriorFactor::MakeShared(knot1, knot2);
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getQinvPublic(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
                 return getQinv(dt, Qc_diag);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             Eigen::Matrix<double, 18, 18> Interface::getQinvPublic(const double& dt) const {
                 return getQinv(dt, Qc_diag_);
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getQPublic(const double& dt) const {
                 return getQ(dt, Qc_diag_);
             }
 
+            // ###########################################################
+            // get
+            // ###########################################################
+
             Eigen::Matrix<double, 18, 18> Interface::getQPublic(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
                 return getQ(dt, Qc_diag);
             }
+
+            // ###########################################################
+            // get
+            // ###########################################################
 
             Eigen::Matrix<double, 18, 18> Interface::getTranPublic(const double& dt) const {
                 return getTran(dt);

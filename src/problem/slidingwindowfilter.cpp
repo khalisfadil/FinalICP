@@ -25,6 +25,9 @@ namespace finalicp {
 
     void SlidingWindowFilter::addStateVariable(const std::vector<StateVarBase::Ptr>& variables) {
         for (const auto& var : variables) {
+#ifdef DEBUG
+            std::cout << "[SWF DEBUG | addStateVariable] Adding State Variable. Key: " << var->key() << std::endl;
+#endif
             const auto res = variables_.try_emplace(var->key(), var, false);
             if (!res.second) throw std::runtime_error("duplicated variable key");
             variable_queue_.emplace_back(var->key());
@@ -42,6 +45,10 @@ namespace finalicp {
 
     void SlidingWindowFilter::marginalizeVariable(const std::vector<StateVarBase::Ptr> &variables) {
         if (variables.empty()) return;
+
+#ifdef DEBUG
+            std::cout << "--- [SWF DEBUG | marginalizeVariable] Starting Marginalization for " << variables.size() << " variables ---" << std::endl;
+#endif
 
         ///
         for (const auto &variable : variables) {
@@ -76,6 +83,11 @@ namespace finalicp {
             state_vector.addStateVariable(var.variable);
         }
 
+#ifdef DEBUG
+        std::cout << "    - Identified " << to_remove.size() << " variables to be marginalized out." << std::endl;
+        std::cout << "    - Total variables in current problem: " << state_vector.getNumberOfStates() << std::endl;
+#endif
+
         //
         std::vector<BaseCostTerm::ConstPtr> active_cost_terms;
         active_cost_terms.reserve(cost_terms_.size());
@@ -101,6 +113,9 @@ namespace finalicp {
         //
         cost_terms_ = active_cost_terms;
 
+#ifdef DEBUG
+        std::cout << "    - Built system with " << active_cost_terms.size() << " remaining active cost terms." << std::endl;
+#endif
         /// \todo use sparse matrix
         Eigen::MatrixXd Aupper(A_.toEigen(false));
         Eigen::MatrixXd A(Aupper.selfadjointView<Eigen::Upper>());
@@ -108,6 +123,9 @@ namespace finalicp {
 
         // add the cached terms (always top-left block)
         if (fixed_A_.size() > 0) {
+#ifdef DEBUG
+            std::cout << "    - Applying prior from previous marginalization (Size: " << fixed_A_.rows() << "x" << fixed_A_.cols() << ")" << std::endl;
+#endif
             A.topLeftCorner(fixed_A_.rows(), fixed_A_.cols()) += fixed_A_;
             b.head(fixed_b_.size()) += fixed_b_;
         }
@@ -115,15 +133,26 @@ namespace finalicp {
         // marginalize the fixed variables
         const auto fixed_state_size = fixed_state_vector.getStateSize();
         if (fixed_state_size > 0) {
-            // clang-format off
+#ifdef DEBUG
+            std::cout << "    - Performing Schur complement. Marginalizing " << fixed_state_size << " dimensions." << std::endl;
+#endif
             Eigen::MatrixXd A00(A.topLeftCorner(fixed_state_size, fixed_state_size));
+#ifdef DEBUG
+            Eigen::FullPivLU<Eigen::MatrixXd> lu(A00);
+            if (!lu.isInvertible()) {
+                std::cerr << "[SWF DEBUG | marginalizeVariable] CRITICAL: Matrix block A00 is not invertible during marginalization! System may be ill-conditioned." << std::endl;
+                // You might want to throw an exception here in a real application
+            }
+#endif
             Eigen::MatrixXd A10(A.bottomLeftCorner(A.rows() - fixed_state_size, fixed_state_size));
             Eigen::MatrixXd A11(A.bottomRightCorner(A.rows() - fixed_state_size, A.cols() - fixed_state_size));
             Eigen::VectorXd b0(b.head(fixed_state_size));
             Eigen::VectorXd b1(b.tail(b.size() - fixed_state_size));
             fixed_A_ = A11 - A10 * A00.inverse() * A10.transpose();
             fixed_b_ = b1 - A10 * A00.inverse() * b0;
-            // clang-format on
+#ifdef DEBUG
+            std::cout << "    - New prior created. Size: " << fixed_A_.rows() << "x" << fixed_A_.cols() << ", Norm: " << fixed_A_.norm() << std::endl;
+#endif
         } else {
             fixed_A_ = A;
             fixed_b_ = b;
@@ -143,6 +172,9 @@ namespace finalicp {
             variable_queue_.pop_front();
         }
         getStateVector();
+#ifdef DEBUG
+        std::cout << "--- [SWF DEBUG | marginalizeVariable] Marginalization Complete. " << variables_.size() << " variables remain. ---" << std::endl;
+#endif
     }
 
     // -----------------------------------------------------------------------------
@@ -151,9 +183,16 @@ namespace finalicp {
 
     void SlidingWindowFilter::addCostTerm(const BaseCostTerm::ConstPtr &cost_term) {
         cost_terms_.emplace_back(cost_term);
-
         KeySet related_keys;
         cost_term->getRelatedVarKeys(related_keys);
+#ifdef DEBUG
+        // --- [IMPROVEMENT] Log cost term addition and its connections ---
+        std::stringstream ss;
+        ss << "[SWF DEBUG | addCostTerm] Adding Cost Term. Connects keys: { ";
+        for(const auto& key : related_keys) { ss << key << " "; }
+        ss << "}";
+        std::cout << ss.str() << std::endl;
+#endif
         for (const auto &key : related_keys) {
             related_var_keys_.at(key).insert(related_keys.begin(), related_keys.end());
         }
@@ -224,6 +263,12 @@ namespace finalicp {
             }
             state_vector_->addStateVariable(var.variable);
         }
+#ifdef DEBUG
+        // --- [IMPROVEMENT] Log the partitioning of the state vector ---
+        std::cout << "[SWF DEBUG | getStateVector] getStateVector called. Partitioning: "
+                << marginalize_state_vector_->getNumberOfStates() << " to be marginalized, "
+                << active_state_vector_->getNumberOfStates() << " active." << std::endl;
+#endif
         return active_state_vector_;
     }
 
@@ -234,6 +279,9 @@ namespace finalicp {
     void SlidingWindowFilter::buildGaussNewtonTerms(
             Eigen::SparseMatrix<double> &approximate_hessian,
             Eigen::VectorXd &gradient_vector) const {
+#ifdef DEBUG
+        std::cout << "[SWF DEBUG | buildGaussNewtonTerms] buildGaussNewtonTerms called for the active window." << std::endl;
+#endif
         //
         std::vector<unsigned int> sqSizes = state_vector_->getStateBlockSizes();
         BlockSparseMatrix A_(sqSizes, true);
@@ -249,6 +297,9 @@ namespace finalicp {
         Eigen::VectorXd b(b_.toEigen());
 
         if (fixed_A_.size() > 0) {
+#ifdef DEBUG
+            std::cout << "    - Applying prior from marginalization (Size: " << fixed_A_.rows() << "x" << fixed_A_.cols() << ")" << std::endl;
+#endif
             A.topLeftCorner(fixed_A_.rows(), fixed_A_.cols()) += fixed_A_;
             b.head(fixed_b_.size()) += fixed_b_;
         }
@@ -256,7 +307,9 @@ namespace finalicp {
         // marginalize the fixed variables
         const auto marginalize_state_size = marginalize_state_vector_->getStateSize();
         if (marginalize_state_size > 0) {
-            // clang-format off
+#ifdef DEBUG
+            std::cout << "    - buildGaussNewtonTerms is marginalizing " << marginalize_state_size << " dimensions to form final system." << std::endl;
+#endif
             Eigen::MatrixXd A00(A.topLeftCorner(marginalize_state_size, marginalize_state_size));
             Eigen::MatrixXd A10(A.bottomLeftCorner(A.rows() - marginalize_state_size, marginalize_state_size));
             Eigen::MatrixXd A11(A.bottomRightCorner(A.rows() - marginalize_state_size, A.cols() - marginalize_state_size));
@@ -269,6 +322,10 @@ namespace finalicp {
             approximate_hessian = A.sparseView();
             gradient_vector = b;
         }
+#ifdef DEBUG
+        std::cout << "    - Final system built. Hessian non-zeros: " << approximate_hessian.nonZeros()
+                << ", Gradient norm: " << gradient_vector.norm() << std::endl;
+#endif
     }
 } // namespace finalicp
 

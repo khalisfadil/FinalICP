@@ -55,9 +55,13 @@ namespace finalicp {
         // Verify we don't already have this state
         const auto &key = state->key();
         if (hasStateVariable(key))
-            throw std::runtime_error(
-                "[StateVector::addStateVariable] StateVector already contains the state being added.");
-
+            throw std::runtime_error("[StateVector::addStateVariable] StateVector already contains the state being added.");
+        
+#ifdef DEBUG
+        std::cout << "[SV DEBUG | addStateVariable] Adding state. Key: " << key
+                  << ", Block Index: " << num_block_entries_
+                  << ", Dim: " << state->perturb_dim() << std::endl;
+#endif
         // Create new container
         StateContainer new_entry;
         new_entry.state = state;  // copy the shared_ptr (increases ref count)
@@ -99,10 +103,6 @@ namespace finalicp {
         }
 
         unsigned int idx = it->second.local_block_index;
-        // debug
-        // ##################################
-        // std::cout << "[DEBUG::StateVector] Mapping key " << key << " to block index " << idx << std::endl;
-        // ##################################
 
         // Return block index
         return it->second.local_block_index;
@@ -112,18 +112,7 @@ namespace finalicp {
         std::vector<unsigned int> result;
         result.resize(states_.size());
 
-        // debug
-        // ##################################
-        // std::cout << "[DEBUG::StateVector] getStateBlockSizes - states_.size(): " << states_.size() << std::endl;
-        // ##################################
-
         for (auto it = states_.begin(); it != states_.end(); ++it) {
-
-            // debug
-            // ##################################
-            // std::cout << "[DEBUG::StateVector] State key: " << it->first << ", local_block_index: " << it->second.local_block_index
-            //         << ", perturb_dim: " << it->second.state->perturb_dim() << std::endl;
-            // ##################################
 
             if (it->second.local_block_index < 0 ||
                 it->second.local_block_index >= (int)result.size()) {
@@ -132,14 +121,16 @@ namespace finalicp {
             result[it->second.local_block_index] = it->second.state->perturb_dim();
         }
 
-        // debug
-        // ##################################
-        // std::cout << "[DEBUG::StateVector] StateVector::getStateBlockSizes returns: ";
-        // for (const auto& size : result) {
-        //     std::cout << size << " ";
-        // }
-        // std::cout << std::endl;
-        // ##################################
+        // --- [IMPROVEMENT] More concise summary log ---
+#ifdef DEBUG
+        std::stringstream ss;
+        ss << "[SV DEBUG | getStateBlockSizes] getStateBlockSizes() -> [";
+        for (size_t i = 0; i < result.size(); ++i) {
+            ss << result[i] << (i == result.size() - 1 ? "" : ", ");
+        }
+        ss << "]";
+        std::cout << ss.str() << std::endl;
+#endif
 
         return result;
     }
@@ -153,12 +144,21 @@ namespace finalicp {
         // Convert single vector to a block-vector of perturbations (checks sizes)
         BlockVector blk_perturb(getStateBlockSizes(), perturbation);
 
+#ifdef DEBUG
+        std::cout << "[SV DEBUG | update] Updating StateVector with perturbation norm: " << perturbation.norm() << std::endl;
+#endif
+
         // Iterate over states and update each
         for (auto it = states_.begin(); it != states_.end(); ++it) {
             // Check for valid index
             if (it->second.local_block_index < 0)
             throw std::runtime_error("[StateVector::update] local_block_index is not initialized");
-
+#ifdef DEBUG
+            const auto& block = blk_perturb.at(it->second.local_block_index);
+            std::cout << "    - Updating State Key: " << it->first
+                      << " (Block " << it->second.local_block_index << ")"
+                      << " with perturbation norm: " << block.norm() << std::endl;
+#endif
             // Update state
             it->second.state->update(blk_perturb.at(it->second.local_block_index));
         }

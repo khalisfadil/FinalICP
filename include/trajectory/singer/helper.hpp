@@ -11,101 +11,125 @@ namespace finalicp {
             using Variable = traj::const_acc::Variable;
 
             inline Eigen::Matrix<double, 18, 18> getQ(const double& dt, const Eigen::Matrix<double, 6, 1>& add, const Eigen::Matrix<double, 6, 1>& qcd = Eigen::Matrix<double, 6, 1>::Ones()) {
-                // clang-format off
+#ifdef DEBUG
+                // --- [IMPROVEMENT] Log function call and validate input dt ---
+                if (dt < 0) {
+                    std::cerr << "[SINGER DEBUG | getQ] CRITICAL: Negative time delta dt (" << dt << ") received!" << std::endl;
+                }
+#endif
                 Eigen::Matrix<double, 18, 18> Q = Eigen::Matrix<double, 18, 18>::Zero();
                 for (int i = 0; i < 6; ++i) {
                     const double ad = add(i, 0);
                     const double qc = qcd(i, 0);
+#ifdef DEBUG
+                    // Log which branch is taken, but only once to avoid spam
+                    if (i == 0) {
+                        std::cout << "    -> [SINGER DEBUG | getQ] dt=" << dt << ". Using " << (fabs(ad) >= 1.0 ? "ANALYTICAL" : "TAYLOR_SERIES") << " branch." << std::endl;
+                    }
+#endif
                     if (fabs(ad) >= 1.0) {
-                    const double adi = 1.0 / ad;
-                    const double adi2 = adi * adi;
-                    const double adi3 = adi * adi2;
-                    const double adi4 = adi * adi3;
-                    const double adi5 = adi * adi4;
-                    const double adt = ad * dt;
-                    const double adt2 = adt * adt;
-                    const double adt3 = adt2 * adt;
-                    const double expon = std::exp(-adt);
-                    const double expon2 = std::exp(-2 * adt);
-                    Q(i, i) = qc * (
-                        0.5
-                        * adi5
-                        * (1 - expon2 + 2 * adt + (2.0 / 3.0) * adt3 - 2 * adt2 - 4 * adt * expon)
-                    );
-                    Q(i, i + 6) = Q(i + 6, i) = qc * (
-                        0.5 * adi4 * (expon2 + 1 - 2 * expon + 2 * adt * expon - 2 * adt + adt2)
-                    );
-                    Q(i, i + 12) = Q(i + 12, i) = qc * 0.5 * adi3 * (1 - expon2 - 2 * adt * expon);
-                    Q(i + 6, i + 6) = qc * 0.5 * adi3 * (4 * expon - 3 - expon2 + 2 * adt);
-                    Q(i + 6, i + 12) = Q(i + 12, i + 6) = qc * 0.5 * adi2 * (expon2 + 1 - 2 * expon);
-                    Q(i + 12, i + 12) = qc * 0.5 * adi * (1 - expon2);
+                        const double adi = 1.0 / ad;
+                        const double adi2 = adi * adi;
+                        const double adi3 = adi * adi2;
+                        const double adi4 = adi * adi3;
+                        const double adi5 = adi * adi4;
+                        const double adt = ad * dt;
+                        const double adt2 = adt * adt;
+                        const double adt3 = adt2 * adt;
+                        const double expon = std::exp(-adt);
+                        const double expon2 = std::exp(-2 * adt);
+                        Q(i, i) = qc * (
+                            0.5
+                            * adi5
+                            * (1 - expon2 + 2 * adt + (2.0 / 3.0) * adt3 - 2 * adt2 - 4 * adt * expon)
+                        );
+                        Q(i, i + 6) = Q(i + 6, i) = qc * (
+                            0.5 * adi4 * (expon2 + 1 - 2 * expon + 2 * adt * expon - 2 * adt + adt2)
+                        );
+                        Q(i, i + 12) = Q(i + 12, i) = qc * 0.5 * adi3 * (1 - expon2 - 2 * adt * expon);
+                        Q(i + 6, i + 6) = qc * 0.5 * adi3 * (4 * expon - 3 - expon2 + 2 * adt);
+                        Q(i + 6, i + 12) = Q(i + 12, i + 6) = qc * 0.5 * adi2 * (expon2 + 1 - 2 * expon);
+                        Q(i + 12, i + 12) = qc * 0.5 * adi * (1 - expon2);
                     } else {
-                    const double dt2 = dt * dt;
-                    const double dt3 = dt * dt2;
-                    const double dt4 = dt * dt3;
-                    const double dt5 = dt * dt4;
-                    const double dt6 = dt * dt5;
-                    const double dt7 = dt * dt6;
-                    const double dt8 = dt * dt7;
-                    const double dt9 = dt * dt8;
-                    const double ad2 = ad * ad;
-                    const double ad3 = ad * ad2;
-                    const double ad4 = ad * ad3;
-                    // use Taylor series expansion about ad = 0
-                    Q(i, i) = qc * (
-                        0.05 * dt5
-                        - 0.0277778 * dt6 * ad
-                        + 0.00992063 * dt7 * ad2
-                        - 0.00277778 * dt8 * ad3
-                        + 0.00065586 * dt9 * ad4
-                    );
-                    Q(i, i + 6) = Q(i + 6, i) = qc * (
-                        0.125 * dt4
-                        - 0.0833333 * dt5 * ad
-                        + 0.0347222 * dt6 * ad2
-                        - 0.0111111 * dt7 * ad3
-                        + 0.00295139 * dt8 * ad4
-                    );
-                    Q(i, i + 12) = Q(i + 12, i) = qc * (
-                        (1 / 6) * dt3
-                        - (1 / 6) * dt4 * ad
-                        + 0.0916667 * dt5 * ad2
-                        - 0.0361111 * dt6 * ad3
-                        + 0.0113095 * dt7 * ad4
-                    );
-                    Q(i + 6, i + 6) = qc * (
-                        (1 / 3) * dt3
-                        - 0.25 * dt4 * ad
-                        + 0.116667 * dt5 * ad2
-                        - 0.0416667 * dt6 * ad3
-                        + 0.0123016 * dt7 * ad4
-                    );
-                    Q(i + 6, i + 12) = Q(i + 12, i + 6) = qc * (
-                        0.5 * dt2
-                        - 0.5 * dt3 * ad
-                        + 0.291667 * dt4 * ad2
-                        - 0.125 * dt5 * ad3
-                        + 0.0430556 * dt6 * ad4
-                    );
-                    Q(i + 12, i + 12) = qc * (
-                        dt
-                        - dt2 * ad
-                        + (2 / 3) * dt3 * ad2
-                        - (1 / 3) * dt4 * ad3
-                        + 0.133333 * dt5 * ad4
-                    );
+                        const double dt2 = dt * dt;
+                        const double dt3 = dt * dt2;
+                        const double dt4 = dt * dt3;
+                        const double dt5 = dt * dt4;
+                        const double dt6 = dt * dt5;
+                        const double dt7 = dt * dt6;
+                        const double dt8 = dt * dt7;
+                        const double dt9 = dt * dt8;
+                        const double ad2 = ad * ad;
+                        const double ad3 = ad * ad2;
+                        const double ad4 = ad * ad3;
+                        // use Taylor series expansion about ad = 0
+                        Q(i, i) = qc * (
+                            0.05 * dt5
+                            - 0.0277778 * dt6 * ad
+                            + 0.00992063 * dt7 * ad2
+                            - 0.00277778 * dt8 * ad3
+                            + 0.00065586 * dt9 * ad4
+                        );
+                        Q(i, i + 6) = Q(i + 6, i) = qc * (
+                            0.125 * dt4
+                            - 0.0833333 * dt5 * ad
+                            + 0.0347222 * dt6 * ad2
+                            - 0.0111111 * dt7 * ad3
+                            + 0.00295139 * dt8 * ad4
+                        );
+                        Q(i, i + 12) = Q(i + 12, i) = qc * (
+                            (1 / 6) * dt3
+                            - (1 / 6) * dt4 * ad
+                            + 0.0916667 * dt5 * ad2
+                            - 0.0361111 * dt6 * ad3
+                            + 0.0113095 * dt7 * ad4
+                        );
+                        Q(i + 6, i + 6) = qc * (
+                            (1 / 3) * dt3
+                            - 0.25 * dt4 * ad
+                            + 0.116667 * dt5 * ad2
+                            - 0.0416667 * dt6 * ad3
+                            + 0.0123016 * dt7 * ad4
+                        );
+                        Q(i + 6, i + 12) = Q(i + 12, i + 6) = qc * (
+                            0.5 * dt2
+                            - 0.5 * dt3 * ad
+                            + 0.291667 * dt4 * ad2
+                            - 0.125 * dt5 * ad3
+                            + 0.0430556 * dt6 * ad4
+                        );
+                        Q(i + 12, i + 12) = qc * (
+                            dt
+                            - dt2 * ad
+                            + (2 / 3) * dt3 * ad2
+                            - (1 / 3) * dt4 * ad3
+                            + 0.133333 * dt5 * ad4
+                        );
                     }
                 }
-                // clang-format on
-
+#ifdef DEBUG
+                // --- [IMPROVEMENT] Sanity-check final matrix ---
+                if (!Q.allFinite()) {
+                    std::cerr << "[SINGER DEBUG | getQ] CRITICAL: Resulting Q matrix contains non-finite values!" << std::endl;
+                }
+#endif
                 return Q;
             }
 
             inline Eigen::Matrix<double, 18, 18> getTran(const double& dt, const Eigen::Matrix<double, 6, 1>& add) {
-                // clang-format off
+#ifdef DEBUG
+                if (dt < 0) {
+                    std::cerr << "[SINGER DEBUG | getTran] CRITICAL: Negative time delta dt (" << dt << ") received!" << std::endl;
+                }
+#endif
                 Eigen::Matrix<double, 18, 18> Tran = Eigen::Matrix<double, 18, 18>::Identity();
                 for (int i = 0; i < 6; ++i) {
                     const double ad = add(i, 0);
+#ifdef DEBUG
+                    if (i == 0) {
+                        std::cout << "    -> [SINGER DEBUG | getTran] dt=" << dt << ". Using " << (fabs(ad) >= 1.0 ? "ANALYTICAL" : "TAYLOR_SERIES") << " branch." << std::endl;
+                    }
+#endif
                     if (fabs(ad) >= 1.0) {
                     const double adinv = 1.0 / ad;
                     const double adt = ad * dt;
@@ -146,7 +170,11 @@ namespace finalicp {
                     }
                 }
                 Tran.block<6, 6>(0, 6).diagonal() = dt * Eigen::Array<double, 6, 1>::Ones();
-                // clang-format on
+#ifdef DEBUG
+                if (!Tran.allFinite()) {
+                    std::cerr << "[SINGER DEBUG | getTran] CRITICAL: Resulting Tran matrix contains non-finite values!" << std::endl;
+                }
+#endif
                 return Tran;
             }
 
@@ -160,6 +188,16 @@ namespace finalicp {
                 const auto Jinv_12 = J_21_inv * T_21.adjoint();
                 const auto w2 = knot2->velocity()->value();
                 const auto dw2 = knot2->acceleration()->value();
+#ifdef DEBUG
+                // --- [IMPROVEMENT] Log function call and check intermediate values ---
+                std::cout << "    -> [SINGER DEBUG | getJacKnot1] Calculating Jacobian over dt=" << dt << "s." << std::endl;
+                if (!Phi.allFinite()) {
+                    std::cerr << "[SINGER DEBUG | getJacKnot1] CRITICAL: Intermediate transition matrix Phi contains non-finite values!" << std::endl;
+                }
+                if (!J_21_inv.allFinite()) {
+                    std::cerr << "[SINGER DEBUG | getJacKnot1] CRITICAL: Intermediate inverse Jacobian J_21_inv contains non-finite values!" << std::endl;
+                }
+#endif
                 // init jacobian
                 Eigen::Matrix<double, 18, 18> jacobian;
                 jacobian.setZero();
@@ -177,6 +215,11 @@ namespace finalicp {
                 jacobian.block<6, 6>(0, 12) = -Phi.block<6, 6>(0, 12);
                 jacobian.block<6, 6>(6, 12) = -Phi.block<6, 6>(6, 12);
                 jacobian.block<6, 6>(12, 12) = -Phi.block<6, 6>(12, 12);
+#ifdef DEBUG
+                if (!jacobian.allFinite()) {
+                    std::cerr << "[SINGER DEBUG | getJacKnot1] CRITICAL: Final Jacobian matrix contains non-finite values!" << std::endl;
+                }
+#endif
                 return jacobian;
             }
 

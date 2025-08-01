@@ -31,19 +31,42 @@ namespace finalicp {
                     const double T = (knot2->time() - knot1->time()).seconds();
                     const double tau = (time - knot1->time()).seconds();
                     const double kappa = (knot2->time() - time).seconds();
+#ifdef DEBUG
+                    std::cout << " interpolating acceleration with Singer model. Interval T: " << T << "s, at tau: " << tau << "s." << std::endl;
+                    if (T <= 0) {
+                        std::cerr << "[SINGER DEBUG | AccelerationInterpolator] CRITICAL: Total time interval T is zero or negative!" << std::endl;
+                    }
+#endif
                     // Q and Transition matrix
                     const auto Q_tau = getQ(tau, ad);
                     const auto Q_T = getQ(T, ad);
                     const auto Tran_kappa = getTran(kappa, ad);
                     const auto Tran_tau = getTran(tau, ad);
                     const auto Tran_T = getTran(T, ad);
+#ifdef DEBUG
+                    // --- [IMPROVEMENT] Sanity-check matrix inversion ---
+                    Eigen::FullPivLU<Eigen::Matrix<double, 18, 18>> lu(Q_T);
+                    if (!lu.isInvertible()) {
+                        std::cerr << "[SINGER DEBUG | AccelerationInterpolator] CRITICAL: Process noise matrix Q_T is not invertible! Cannot compute interpolation matrices." << std::endl;
+                        // Set to identity to avoid crashing, but the result will be wrong.
+                        omega_.setIdentity();
+                        lambda_.setIdentity();
+                        return;
+                    }
+#endif
                     // Calculate interpolation values
                     omega_ = Q_tau * Tran_kappa.transpose() * Q_T.inverse();
                     lambda_ = Tran_tau - omega_ * Tran_T;
+#ifdef DEBUG
+                    // --- [IMPROVEMENT] Sanity-check final interpolation matrices ---
+                    if (!omega_.allFinite() || !lambda_.allFinite()) {
+                        std::cerr << "[SINGER DEBUG | AccelerationInterpolator] CRITICAL: Final interpolation matrices (omega/lambda) contain non-finite values!" << std::endl;
+                    } else {
+                        std::cout << "    - Omega norm: " << omega_.norm() << ", Lambda norm: " << lambda_.norm() << std::endl;
+                    }
+#endif
                 }
-
             };
-
         }  // namespace singer
     }  // namespace traj
 }  // namespace finalicp

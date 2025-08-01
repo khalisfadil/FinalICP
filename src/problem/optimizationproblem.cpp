@@ -4,29 +4,62 @@
 #include <iostream>
 
 namespace finalicp {
+
+    // ##################################################
+    // MakeShared
+    // ##################################################
+
     auto OptimizationProblem::MakeShared(unsigned int num_threads)-> OptimizationProblem::Ptr {
         return std::make_shared<OptimizationProblem>(num_threads);
     }
 
+    // ##################################################
+    // OptimizationProblem
+    // ##################################################
+
     OptimizationProblem::OptimizationProblem(unsigned int num_threads)
     : num_threads_(num_threads) {}
 
+    // ##################################################
+    // addStateVariable
+    // ##################################################
+
     void OptimizationProblem::addStateVariable(const StateVarBase::Ptr &state) {
+#ifdef DEBUG
+        std::cout << "[OptProb DEBUG | addStateVariable] Adding State Variable. Key: " << state->key() << std::endl;
+#endif
         state_vars_.push_back(state);
     }
 
+    // ##################################################
+    // addCostTerm
+    // ##################################################
+
     void OptimizationProblem::addCostTerm(const BaseCostTerm::ConstPtr &costTerm) {
+#ifdef DEBUG
+        std::cout << "[OptProb DEBUG | addCostTerm] Adding Cost Term. Total now: " << cost_terms_.size() + 1 << std::endl;
+#endif
         cost_terms_.push_back(costTerm);
     }
+
+    // ##################################################
+    // getNumberOfCostTerms
+    // ##################################################
 
     unsigned int OptimizationProblem::getNumberOfCostTerms() const {
         return cost_terms_.size();
     }
 
+    // ##################################################
+    // cost
+    // ##################################################
 
     double OptimizationProblem::cost() const {
 
         // Sequential processing for small cost_terms_ to avoid parallel overhead
+#ifdef DEBUG
+        std::cout << "[OptProb DEBUG | cost] Calculating total cost from " << cost_terms_.size() << " cost terms..." << std::endl;
+#endif
         double cost = 0;
         for (size_t i = 0; i < cost_terms_.size(); i++) {
             try {
@@ -45,49 +78,49 @@ namespace finalicp {
         return cost;
     }
 
+    // ##################################################
+    // getStateVector
+    // ##################################################
+
     StateVector::Ptr OptimizationProblem::getStateVector() const {
         *state_vector_ = StateVector();
+
+#ifdef DEBUG
+        std::cout << "[OptProb DEBUG | getStateVector] assembling StateVector from " << state_vars_.size() << " total variables..." << std::endl;
+        int unlocked_count = 0;
+#endif
+
         for (const auto &state_var : state_vars_) {
-            if (!state_var->locked()) state_vector_->addStateVariable(state_var);
-
-            //debug
-            // ##################################
-            // std::cout << "[DEBUG::OptimizationProblem] Adding state var with key: " << state_var->key() << ", perturb_dim: " << state_var->perturb_dim() << std::endl;
-            // ##################################
+            if (!state_var->locked()) {
+                state_vector_->addStateVariable(state_var);
+#ifdef DEBUG
+                unlocked_count++;
+#endif
+            }
+#ifdef DEBUG
+            else {
+                std::cout << "    - Skipping locked variable with key: " << state_var->key() << std::endl;
+            }
+#endif
         }
-
-        //debug
-        // ##################################
-        // std::cout << "[DEBUG::OptimizationProblem] State vector block sizes: ";
-        // for (const auto& size : state_vector_->getStateBlockSizes()) {
-        //     std::cout << size << " ";
-        // }
-        // std::cout << std::endl;
-        // ##################################
-
+#ifdef DEBUG
+        std::cout << "    - Assembly complete. Added " << unlocked_count << " unlocked variables to the active state." << std::endl;
+#endif
         return state_vector_;
     }
 
+    // ##################################################
+    // buildGaussNewtonTerms
+    // ##################################################
+
     void OptimizationProblem::buildGaussNewtonTerms(Eigen::SparseMatrix<double>& approximate_hessian, Eigen::VectorXd& gradient_vector) const {
-        
+#ifdef DEBUG
+        std::cout << "[OptProb DEBUG | buildGaussNewtonTerms] Building Gauss-Newton system from " << cost_terms_.size() << " cost terms." << std::endl;
+#endif
         std::vector<unsigned int> sqSizes = state_vector_->getStateBlockSizes();
-        
-        // debug
-        // ##################################
-        // std::cout << "[DEBUG::OptimizationProblem] buildGaussNewtonTerms - sqSizes: ";
-        // for (const auto& size : sqSizes) {
-        //     std::cout << size << " ";
-        // }
-        // std::cout << std::endl;
-        // ##################################
         
         BlockSparseMatrix A_(sqSizes, true);
         BlockVector b_(sqSizes);
-
-        // debug
-        // ##################################
-        // std::cout << "[DEBUG::OptimizationProblem] Gradient vector num entries: " << b_.getIndexing().numEntries() << std::endl;
-        // ##################################
 
         // Process cost terms: sequential for small sizes, parallel for large
         
@@ -101,18 +134,25 @@ namespace finalicp {
                 std::cerr << "[OptimizationProblem::buildGaussNewtonTerms]  exception in cost term: (unknown)" << std::endl;
             }
         }
-        // debug
-        // ##################################
-        // std::cout << "[DEBUG::OptimizationProblem] Converting BlockSparseMatrix to Eigen" << std::endl;
-        // ##################################
 
         approximate_hessian = A_.toEigen(false);
-
-        // debug
-        // ##################################
-        // std::cout << "[DEBUG::OptimizationProblem] Converting BlockVector to Eigen, size: " << b_.toEigen().size() << std::endl;
-        // ##################################
-
         gradient_vector = b_.toEigen();
+
+#ifdef DEBUG
+        // --- [IMPROVEMENT] Sanity-check the final constructed system ---
+        bool hessian_ok = approximate_hessian.coeffs().allFinite();
+        bool gradient_ok = gradient_vector.allFinite();
+
+        if (!hessian_ok) {
+            std::cerr << "[OptProb DEBUG | buildGaussNewtonTerms] CRITICAL: Assembled Hessian contains non-finite values!" << std::endl;
+        }
+        if (!gradient_ok) {
+            std::cerr << "[OptProb DEBUG | buildGaussNewtonTerms] CRITICAL: Assembled Gradient contains non-finite values!" << std::endl;
+        }
+        if (hessian_ok && gradient_ok) {
+            std::cout << "    - System built successfully. Hessian non-zeros: " << approximate_hessian.nonZeros()
+                      << ", Gradient norm: " << gradient_vector.norm() << std::endl;
+        }
+#endif
     }
 } // namespace finalicp

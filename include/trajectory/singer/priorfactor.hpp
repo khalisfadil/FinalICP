@@ -26,6 +26,18 @@ namespace finalicp {
                     : traj::const_acc::PriorFactor(knot1, knot2), alpha_diag_(ad) {
                     const double dt = (knot2_->time() - knot1_->time()).seconds();
                     Phi_ = getTran(dt, ad);
+#ifdef DEBUG
+                    // --- [IMPROVEMENT] Log factor creation and sanity check the transition matrix ---
+                    std::cout << "[SINGER DEBUG | PriorFactor] Creating Singer motion factor between knots at t="
+                            << std::fixed << knot1_->time().seconds() << " and t=" << knot2_->time().seconds()
+                            << " (dt=" << dt << "s)." << std::endl;
+
+                    if (!Phi_.allFinite()) {
+                        std::cerr << "[SINGER DEBUG | PriorFactor] CRITICAL: Computed transition matrix Phi_ contains non-finite values!" << std::endl;
+                    } else {
+                        std::cout << "    - Transition matrix norm: " << Phi_.norm() << std::endl;
+                    }
+#endif
                 }
 
             protected:

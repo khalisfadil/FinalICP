@@ -36,7 +36,14 @@ namespace finalicp {
 
                 //Constructs an `AccelerationExtrapolator` instance.
                 Interface(const Eigen::Matrix<double, 6, 1>& alpha_diag = Eigen::Matrix<double, 6, 1>::Ones(), const Eigen::Matrix<double, 6, 1>& Qc_diag = Eigen::Matrix<double, 6, 1>::Ones())
-                    : traj::const_acc::Interface(Qc_diag), alpha_diag_(alpha_diag) {}
+                    : traj::const_acc::Interface(Qc_diag), alpha_diag_(alpha_diag) {
+#ifdef DEBUG
+                    // --- [IMPROVEMENT] Log creation and configuration parameters ---
+                    std::cout << "🎶 [SINGER DEBUG | Interface] Creating Singer::Interface." << std::endl;
+                    std::cout << "    - Alpha Diag: " << alpha_diag_.transpose() << std::endl;
+                    std::cout << "    - Qc Diag:    " << Qc_diag_.transpose() << std::endl;
+#endif
+                    }
 
                 //Checks if the extrapolator depends on any active variables
                 Eigen::Matrix<double, 18, 18> getQinvPublic(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
@@ -68,10 +75,18 @@ namespace finalicp {
                 }
 
                 Eigen::Matrix<double, 18, 18> getQ_(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
+#ifdef DEBUG
+                    // --- [IMPROVEMENT] Confirm the specialized override is being used ---
+                    std::cout << "    -> [SINGER DEBUG | getQ_] Using SINGER's overridden getQ_ method." << std::endl;
+#endif
                     return getQ(dt, alpha_diag_, Qc_diag);
                 }
 
                 Eigen::Matrix<double, 18, 18> getQinv_(const double& dt, const Eigen::Matrix<double, 6, 1>& Qc_diag) const {
+#ifdef DEBUG
+                    // --- [IMPROVEMENT] Confirm the specialized override is being used ---
+                    std::cout << "    -> [SINGER DEBUG | getQinv_] Using SINGER's overridden getQinv_ method." << std::endl;
+#endif
                     return getQ(dt, alpha_diag_, Qc_diag).inverse();
                 }
 

@@ -27,6 +27,16 @@ namespace finalicp {
                     : traj::const_acc::VelocityExtrapolator(time, knot) {
                     const double tau = (time - knot->time()).seconds();
                     Phi_ = getTran(tau, ad);
+#ifdef DEBUG
+                    // --- [IMPROVEMENT] Log creation and sanity-check the transition matrix ---
+                    std::cout << " extrapolating velocity with Singer model over dt = " << tau << "s." << std::endl;
+                    if (!Phi_.allFinite()) {
+                        std::cerr << "[SINGER DEBUG | VelocityExtrapolator] CRITICAL: Computed transition matrix Phi_ contains non-finite values!" << std::endl;
+                    } else {
+                        // Logging the norm is a good quick check for stability.
+                        std::cout << "    - Transition matrix norm: " << Phi_.norm() << std::endl;
+                    }
+#endif
                 }
             };
         }  // namespace singer
