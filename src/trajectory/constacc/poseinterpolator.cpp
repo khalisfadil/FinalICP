@@ -30,7 +30,7 @@ namespace finalicp {
                 const double T = (knot2->time() - knot1->time()).seconds();
                 const double tau = (time - knot1->time()).seconds();
 #ifdef DEBUG
-                std::cout << " interpolating pose with const_acc model. Interval T: " << T << "s, at tau: " << tau << "s." << std::endl;
+                // std::cout << " interpolating pose with const_acc model. Interval T: " << T << "s, at tau: " << tau << "s." << std::endl;
                 if (T <= 0) {
                     std::cerr << "[CONSTACC PoseInterpolator DEBUG] CRITICAL: Total time interval T is zero or negative!" << std::endl;
                 }
