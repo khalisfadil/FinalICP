@@ -21,12 +21,12 @@ namespace finalicp {
                 for (int i = 0; i < 6; ++i) {
                     const double ad = add(i, 0);
                     const double qc = qcd(i, 0);
-#ifdef DEBUG
-                    // Log which branch is taken, but only once to avoid spam
-                    if (i == 0) {
-                        std::cout << "    -> [SINGER DEBUG | getQ] dt=" << dt << ". Using " << (fabs(ad) >= 1.0 ? "ANALYTICAL" : "TAYLOR_SERIES") << " branch." << std::endl;
-                    }
-#endif
+// #ifdef DEBUG
+//                     // Log which branch is taken, but only once to avoid spam
+//                     if (i == 0) {
+//                         std::cout << "    -> [SINGER DEBUG | getQ] dt=" << dt << ". Using " << (fabs(ad) >= 1.0 ? "ANALYTICAL" : "TAYLOR_SERIES") << " branch." << std::endl;
+//                     }
+// #endif
                     if (fabs(ad) >= 1.0) {
                         const double adi = 1.0 / ad;
                         const double adi2 = adi * adi;
@@ -125,11 +125,11 @@ namespace finalicp {
                 Eigen::Matrix<double, 18, 18> Tran = Eigen::Matrix<double, 18, 18>::Identity();
                 for (int i = 0; i < 6; ++i) {
                     const double ad = add(i, 0);
-#ifdef DEBUG
-                    if (i == 0) {
-                        std::cout << "    -> [SINGER DEBUG | getTran] dt=" << dt << ". Using " << (fabs(ad) >= 1.0 ? "ANALYTICAL" : "TAYLOR_SERIES") << " branch." << std::endl;
-                    }
-#endif
+// #ifdef DEBUG
+//                     if (i == 0) {
+//                         std::cout << "    -> [SINGER DEBUG | getTran] dt=" << dt << ". Using " << (fabs(ad) >= 1.0 ? "ANALYTICAL" : "TAYLOR_SERIES") << " branch." << std::endl;
+//                     }
+// #endif
                     if (fabs(ad) >= 1.0) {
                     const double adinv = 1.0 / ad;
                     const double adt = ad * dt;
