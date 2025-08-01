@@ -196,7 +196,7 @@ namespace finalicp {
 
     void P2PSuperCostTerm::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
 #ifdef DEBUG
-        std::cout << "🛠️  [P2PSuperCostTerm DEBUG] Building Gauss-Newton terms..." << std::endl;
+        std::cout << "[P2PSuperCostTerm DEBUG] Building Gauss-Newton terms..." << std::endl;
 #endif
         // Retrieve knot states
         using namespace se3;
