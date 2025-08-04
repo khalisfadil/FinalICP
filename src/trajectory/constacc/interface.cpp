@@ -33,6 +33,10 @@ namespace finalicp {
             Interface::Interface(const Eigen::Matrix<double, 6, 1>& Qc_diag)
                 : Qc_diag_(Qc_diag) {}
 
+            // ###########################################################
+            // add
+            // ###########################################################
+
             void Interface::add(const Time time, const Evaluable<PoseType>::Ptr& T_k0, const Evaluable<VelocityType>::Ptr& w_0k_ink, const Evaluable<VelocityType>::Ptr& dw_0k_ink) {
                 if (knot_map_.find(time) != knot_map_.end()) throw std::runtime_error("adding knot at duplicated time");
 #ifdef DEBUG

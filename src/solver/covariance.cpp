@@ -57,12 +57,12 @@ namespace finalicp {
 
     Covariance::Covariance(GaussNewtonSolver& solver)
     : state_vector_(solver.state_vector()), hessian_solver_(solver.solver()) {
-        if (hessian_solver_->info() != Eigen::Success) {
-            throw std::runtime_error("[Covariance] Constructed with a solver that was not successfully factorized!");
-        }
 #ifdef DEBUG
         std::cout << "[Covariance DEBUG] Constructing from existing solver. Reusing factorization." << std::endl;
 #endif
+        if (hessian_solver_->info() != Eigen::Success) {
+            throw std::runtime_error("[Covariance] Constructed with a solver that was not successfully factorized!");
+        }
     }
 
     // ###########################################################
