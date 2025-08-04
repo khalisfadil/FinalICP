@@ -25,9 +25,9 @@ namespace finalicp {
 
     void SlidingWindowFilter::addStateVariable(const std::vector<StateVarBase::Ptr>& variables) {
         for (const auto& var : variables) {
-#ifdef DEBUG
-            std::cout << "[SlidingWindowFilter DEBUG | addStateVariable] Adding State Variable. Key: " << var->key() << std::endl;
-#endif
+// #ifdef DEBUG
+//             std::cout << "[SlidingWindowFilter DEBUG | addStateVariable] Adding State Variable. Key: " << var->key() << std::endl;
+// #endif
             const auto res = variables_.try_emplace(var->key(), var, false);
             if (!res.second) throw std::runtime_error("duplicated variable key");
             variable_queue_.emplace_back(var->key());
@@ -185,14 +185,14 @@ namespace finalicp {
         cost_terms_.emplace_back(cost_term);
         KeySet related_keys;
         cost_term->getRelatedVarKeys(related_keys);
-#ifdef DEBUG
-        // --- [IMPROVEMENT] Log cost term addition and its connections ---
-        std::stringstream ss;
-        ss << "[SlidingWindowFilter DEBUG | addCostTerm] Adding Cost Term. Connects keys: { ";
-        for(const auto& key : related_keys) { ss << key << " "; }
-        ss << "}";
-        std::cout << ss.str() << std::endl;
-#endif
+// #ifdef DEBUG
+//         // --- [IMPROVEMENT] Log cost term addition and its connections ---
+//         std::stringstream ss;
+//         ss << "[SlidingWindowFilter DEBUG | addCostTerm] Adding Cost Term. Connects keys: { ";
+//         for(const auto& key : related_keys) { ss << key << " "; }
+//         ss << "}";
+//         std::cout << ss.str() << std::endl;
+// #endif
         for (const auto &key : related_keys) {
             related_var_keys_.at(key).insert(related_keys.begin(), related_keys.end());
         }

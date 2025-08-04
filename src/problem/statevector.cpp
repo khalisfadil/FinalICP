@@ -69,11 +69,11 @@ namespace finalicp {
         if (hasStateVariable(key))
             throw std::runtime_error("[StateVector::addStateVariable] StateVector already contains the state being added.");
         
-#ifdef DEBUG
-        std::cout << "[StateVector DEBUG | addStateVariable] Adding state. Key: " << key
-                  << ", Block Index: " << num_block_entries_
-                  << ", Dim: " << state->perturb_dim() << std::endl;
-#endif
+// #ifdef DEBUG
+//         std::cout << "[StateVector DEBUG | addStateVariable] Adding state. Key: " << key
+//                   << ", Block Index: " << num_block_entries_
+//                   << ", Dim: " << state->perturb_dim() << std::endl;
+// #endif
         // Create new container
         StateContainer new_entry;
         new_entry.state = state;  // copy the shared_ptr (increases ref count)
@@ -192,12 +192,12 @@ namespace finalicp {
             // Check for valid index
             if (it->second.local_block_index < 0)
             throw std::runtime_error("[StateVector::update] local_block_index is not initialized");
-#ifdef DEBUG
-            const auto& block = blk_perturb.at(it->second.local_block_index);
-            std::cout << "    - Updating State Key: " << it->first
-                      << " (Block " << it->second.local_block_index << ")"
-                      << " with perturbation norm: " << block.norm() << std::endl;
-#endif
+// #ifdef DEBUG
+//             const auto& block = blk_perturb.at(it->second.local_block_index);
+//             std::cout << "    - Updating State Key: " << it->first
+//                       << " (Block " << it->second.local_block_index << ")"
+//                       << " with perturbation norm: " << block.norm() << std::endl;
+// #endif
             // Update state
             it->second.state->update(blk_perturb.at(it->second.local_block_index));
         }
