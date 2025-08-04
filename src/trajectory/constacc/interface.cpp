@@ -189,9 +189,9 @@ namespace finalicp {
             // ###########################################################
 
             auto Interface::getCovariance(const Covariance& cov, const Time time) -> CovType {
-                // clang-format off
-
-                //
+#ifdef DEBUG
+                std::cout << "[CONSTACC Interface DEBUG | getCovariance] if this triggered?." << std::endl;
+#endif
                 if (knot_map_.empty()) throw std::runtime_error("map is empty");
 
                 // Get iterator to first element with time equal to or greater than 'time'

@@ -117,7 +117,7 @@ namespace finalicp {
             }
 
             // ###########################################################
-            // getCovariance
+            // compose_curlyhat
             // ###########################################################
 
             ComposeCurlyhatEvaluator::Ptr compose_curlyhat(const Evaluable<ComposeCurlyhatEvaluator::InType>::ConstPtr& x, const Evaluable<ComposeCurlyhatEvaluator::InType>::ConstPtr& y) {
