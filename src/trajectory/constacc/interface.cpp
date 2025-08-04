@@ -233,7 +233,13 @@ namespace finalicp {
 
                     // end knot covariance
                     const std::vector<StateVarBase::ConstPtr> state_var{T_k0_var, w_0k_ink_var, dw_0k_ink_var};
+#ifdef DEBUG
+                std::cout << "[CONSTACC Interface DEBUG | getCovariance] about to do cov.query." << std::endl;
+#endif
                     const Eigen::Matrix<double, 18, 18> P_end = cov.query(state_var);
+#ifdef DEBUG
+                std::cout << "[CONSTACC Interface DEBUG | getCovariance] Finish.query." << std::endl;
+#endif
 
 #ifdef DEBUG
                     std::cout << "[CONSTACC Interface DEBUG] Extrapolating covariance..." << std::endl;
