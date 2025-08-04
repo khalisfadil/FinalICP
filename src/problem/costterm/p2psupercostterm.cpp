@@ -424,13 +424,13 @@ namespace finalicp {
                     // omp_set_lock(&entry.lock);
                     entry.data += newHessianTerm;
                     // omp_unset_lock(&entry.lock);
-#ifdef DEBUG
-                    // --- [IMPROVEMENT] Add logging to the scatter process ---
-                    // Log only for the diagonal blocks to reduce spam
-                    if (i == j) {
-                        std::cout << "    - Scattering contribution from local block (" << i << "," << j << ") to global block (" << row << "," << col << ")" << std::endl;
-                    }
-#endif
+// #ifdef DEBUG
+//                     // --- [IMPROVEMENT] Add logging to the scatter process ---
+//                     // Log only for the diagonal blocks to reduce spam
+//                     if (i == j) {
+//                         std::cout << "    - Scattering contribution from local block (" << i << "," << j << ") to global block (" << row << "," << col << ")" << std::endl;
+//                     }
+// #endif
                 }
             } catch (const std::exception& e) {
                 std::cerr << "[P2PCVSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ": " << e.what() << std::endl;
