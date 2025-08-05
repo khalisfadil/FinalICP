@@ -47,7 +47,7 @@ namespace finalicp {
 
         // Sequential processing for small meas_times_ to avoid parallel overhead
 #ifdef DEBUG
-        std::cout << "[P2PSuperCostTerm DEBUG] Calculating cost for " << p2p_matches_.size() << " matches across " << meas_times_.size() << " timestamps..." << std::endl;
+        std::cout << "[P2PSuperCostTerm DEBUG | cost] Calculating cost for " << p2p_matches_.size() << " matches across " << meas_times_.size() << " timestamps..." << std::endl;
 #endif
         double cost = 0;
         for (unsigned int i = 0; i < meas_times_.size(); ++i) {
@@ -73,12 +73,12 @@ namespace finalicp {
                     // Log details for the very first point-to-plane match only to avoid spam
                     if (i == 0 && match_idx == bin_indices[0]) {
                         if (!T_mr.allFinite()) {
-                            std::cerr << "    - CRITICAL: Interpolated pose T_mr is non-finite!" << std::endl;
+                            std::cerr << "[P2PSuperCostTerm DEBUG | cost] CRITICAL: Interpolated pose T_mr is non-finite!" << std::endl;
                         }
                         if (!std::isfinite(raw_error)) {
-                             std::cerr << "    - CRITICAL: Raw P2P error is non-finite!" << std::endl;
+                             std::cerr << "[P2PSuperCostTerm DEBUG | cost] CRITICAL: Raw P2P error is non-finite!" << std::endl;
                         } else {
-                            std::cout << "    - First match (t=" << std::fixed << std::setprecision(4) << ts << "): raw_error = " << raw_error << std::endl;
+                            std::cout << "[P2PSuperCostTerm DEBUG | cost] First match (t=" << std::fixed << std::setprecision(4) << ts << "): raw_error = " << raw_error << std::endl;
                         }
                     }
 #endif
@@ -92,7 +92,7 @@ namespace finalicp {
             }
         }
 #ifdef DEBUG
-        std::cout << "    - Total P2P cost contribution: " << cost << std::endl;
+        std::cout << "[P2PSuperCostTerm DEBUG | cost] Total P2P cost contribution: " << cost << std::endl;
 #endif
 
         return cost;
@@ -117,7 +117,7 @@ namespace finalicp {
 
     void P2PSuperCostTerm::initP2PMatches() {
 #ifdef DEBUG
-        std::cout << "[P2PSuperCostTerm DEBUG] Initializing... Grouping " << p2p_matches_.size() << " matches by timestamp." << std::endl;
+        std::cout << "[P2PSuperCostTerm DEBUG | initP2PMatches] Initializing... Grouping " << p2p_matches_.size() << " matches by timestamp." << std::endl;
 #endif
         p2p_match_bins_.clear();
         for (int i = 0; i < (int)p2p_matches_.size(); ++i) {
@@ -181,7 +181,7 @@ namespace finalicp {
 #ifdef DEBUG
                 // --- [IMPROVEMENT] Sanity-check the computed matrices ---
                 if (!omega.allFinite() || !lambda.allFinite()) {
-                     std::cerr << "[P2PSuperCostTerm DEBUG] CRITICAL: Computed interpolation matrices for time " << time << " are non-finite!" << std::endl;
+                     std::cerr << "[P2PSuperCostTerm DEBUG | initialize_interp_matrices_] CRITICAL: Computed interpolation matrices for time " << time << " are non-finite!" << std::endl;
                 }
 #endif
 
@@ -196,7 +196,7 @@ namespace finalicp {
 
     void P2PSuperCostTerm::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
 #ifdef DEBUG
-        std::cout << "[P2PSuperCostTerm DEBUG] Building Gauss-Newton terms..." << std::endl;
+        std::cout << "[P2PSuperCostTerm DEBUG | buildGaussNewtonTerms] Building Gauss-Newton terms..." << std::endl;
 #endif
         // Retrieve knot states
         using namespace se3;
@@ -273,12 +273,12 @@ namespace finalicp {
 #ifdef DEBUG
                 if (i == 0) {
                     if (!interp_jac.allFinite()) {
-                        std::cerr << "[P2PSuperCostTerm DEBUG] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
+                        std::cerr << "[P2PSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
                     }
                     if (!Gmeas.allFinite()) {
-                        std::cerr << "[P2PSuperCostTerm DEBUG] CRITICAL: Aggregated measurement Jacobian (Gmeas) is non-finite!" << std::endl;
+                        std::cerr << "[P2PSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Aggregated measurement Jacobian (Gmeas) is non-finite!" << std::endl;
                     } else {
-                        std::cout << "    - First timestamp bin: interp_jac norm: " << interp_jac.norm() << ", Gmeas norm: " << Gmeas.norm() << std::endl;
+                        std::cout << "[P2PSuperCostTerm DEBUG | buildGaussNewtonTerms] First timestamp bin: interp_jac norm: " << interp_jac.norm() << ", Gmeas norm: " << Gmeas.norm() << std::endl;
                     }
                 }
 #endif
@@ -295,7 +295,7 @@ namespace finalicp {
         if (!A.allFinite() || !b.allFinite()) {
             std::cerr << "[P2PSuperCostTerm DEBUG] CRITICAL: Accumulated local Hessian (A) or Gradient (b) is non-finite!" << std::endl;
         } else {
-             std::cout << "    - Accumulated local Hessian norm: " << A.norm() << ", Gradient norm: " << b.norm() << std::endl;
+             std::cout << "[P2PSuperCostTerm DEBUG | buildGaussNewtonTerms] Accumulated local Hessian norm: " << A.norm() << ", Gradient norm: " << b.norm() << std::endl;
         }
 #endif
 

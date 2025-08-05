@@ -59,7 +59,7 @@ namespace finalicp {
         double cost = 0;
 
 #ifdef DEBUG
-        std::cout << "[IMUSuperCostTerm DEBUG] Calculating cost for " << imu_data_vec_.size() << " IMU measurements..." << std::endl;
+        std::cout << "[IMUSuperCostTerm DEBUG | cost] Calculating cost for " << imu_data_vec_.size() << " IMU measurements..." << std::endl;
 #endif
 
         for (int i = 0; i < (int)imu_data_vec_.size(); ++i) {
@@ -131,19 +131,19 @@ namespace finalicp {
 
 #ifdef DEBUG
                 if (i == 0) {
-                    std::cout << "    - First IMU data point (t=" << std::fixed << std::setprecision(4) << ts << "):" << std::endl;
+                    std::cout << "[IMUSuperCostTerm DEBUG | cost] First IMU data point (t=" << std::fixed << std::setprecision(4) << ts << "):" << std::endl;
                     if (!dw_i.allFinite() || !w_i.allFinite()) {
-                        std::cerr << "    - CRITICAL: Interpolated state (vel/accel) is non-finite!" << std::endl;
+                        std::cerr << "[IMUSuperCostTerm DEBUG | cost] CRITICAL: Interpolated state (vel/accel) is non-finite!" << std::endl;
                     } else {
-                        std::cout << "      - Interp Accel norm: " << dw_i.norm() << ", Interp Vel norm: " << w_i.norm() << std::endl;
-                        std::cout << "      - Interp Bias norm:  " << bias_i.norm() << std::endl;
+                        std::cout << "[IMUSuperCostTerm DEBUG | cost] Interp Accel norm: " << dw_i.norm() << ", Interp Vel norm: " << w_i.norm() << std::endl;
+                        std::cout << "[IMUSuperCostTerm DEBUG | cost] Interp Bias norm:  " << bias_i.norm() << std::endl;
                     }
 
                     if (!raw_error_acc.allFinite() || !raw_error_gyro.allFinite()) {
-                        std::cerr << "    - CRITICAL: Raw IMU error is non-finite!" << std::endl;
+                        std::cerr << "[IMUSuperCostTerm DEBUG | cost] CRITICAL: Raw IMU error is non-finite!" << std::endl;
                     } else {
-                        std::cout << "      - Raw Accel Error norm: " << raw_error_acc.norm() << std::endl;
-                        std::cout << "      - Raw Gyro Error norm:  " << raw_error_gyro.norm() << std::endl;
+                        std::cout << "[IMUSuperCostTerm DEBUG | cost] Raw Accel Error norm: " << raw_error_acc.norm() << std::endl;
+                        std::cout << "[IMUSuperCostTerm DEBUG | cost] Raw Gyro Error norm:  " << raw_error_gyro.norm() << std::endl;
                     }
                 }
 #endif
@@ -156,7 +156,7 @@ namespace finalicp {
         }
 
 #ifdef DEBUG
-        std::cout << "    - Total IMU cost contribution: " << cost << std::endl;
+        std::cout << "[IMUSuperCostTerm DEBUG | cost] Total IMU cost contribution: " << cost << std::endl;
 #endif
 
         return cost;
@@ -191,7 +191,7 @@ namespace finalicp {
 
     void IMUSuperCostTerm::initialize_interp_matrices_() {
 #ifdef DEBUG
-        std::cout << "[IMUSuperCostTerm DEBUG] Initializing interpolation matrices for " << imu_data_vec_.size() << " timestamps." << std::endl;
+        std::cout << "[IMUSuperCostTerm DEBUG | initialize_interp_matrices_] Initializing interpolation matrices for " << imu_data_vec_.size() << " timestamps." << std::endl;
 #endif
         const Eigen::Matrix<double, 6, 1> ones = Eigen::Matrix<double, 6, 1>::Ones();
         // #pragma omp parallel for num_threads(options_.num_threads)
@@ -230,7 +230,7 @@ namespace finalicp {
 #ifdef DEBUG
             // --- [IMPROVEMENT] Sanity-check the computed matrices ---
             if (!omega.allFinite() || !lambda.allFinite()) {
-                    std::cerr << "[IMUSuperCostTerm DEBUG] CRITICAL: Computed interpolation matrices for time " << time << " are non-finite!" << std::endl;
+                    std::cerr << "[IMUSuperCostTerm DEBUG | initialize_interp_matrices_] CRITICAL: Computed interpolation matrices for time " << time << " are non-finite!" << std::endl;
             }
 #endif
             interp_mats_.emplace(time, omega_lambda);
@@ -244,7 +244,7 @@ namespace finalicp {
 
     void IMUSuperCostTerm::buildGaussNewtonTerms(const StateVector &state_vec, BlockSparseMatrix *approximate_hessian, BlockVector *gradient_vector) const {
 #ifdef DEBUG
-        std::cout << "[IMUSuperCostTerm DEBUG] Building Gauss-Newton terms..." << std::endl;
+        std::cout << "[IMUSuperCostTerm DEBUG | buildGaussNewtonTerms] Building Gauss-Newton terms..." << std::endl;
 #endif
         // Retrieve knot states
         using namespace se3;
@@ -430,12 +430,12 @@ namespace finalicp {
                 // --- [IMPROVEMENT] Check Jacobians for the first measurement ---
                 if (i == 0) {
                     if (!interp_jac_pose.allFinite() || !interp_jac_vel.allFinite() || !interp_jac_acc.allFinite()) {
-                        std::cerr << "[IMUSuperCostTerm DEBUG] CRITICAL: Intermediate state Jacobians are non-finite!" << std::endl;
+                        std::cerr << "[IMUSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Intermediate state Jacobians are non-finite!" << std::endl;
                     }
                     if (!G.allFinite() || !error.allFinite()) {
-                        std::cerr << "[IMUSuperCostTerm DEBUG] CRITICAL: Final Jacobian (G) or error vector is non-finite!" << std::endl;
+                        std::cerr << "[IMUSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Final Jacobian (G) or error vector is non-finite!" << std::endl;
                     } else {
-                        std::cout << "    - First IMU point Jacobian norm (G): " << G.norm() << std::endl;
+                        std::cout << "[IMUSuperCostTerm DEBUG | buildGaussNewtonTerms] First IMU point Jacobian norm (G): " << G.norm() << std::endl;
                     }
                 }
 #endif
@@ -451,7 +451,7 @@ namespace finalicp {
         if (!A.allFinite() || !b.allFinite()) {
             std::cerr << "[IMUSuperCostTerm DEBUG] CRITICAL: Accumulated local Hessian (A) or Gradient (b) is non-finite!" << std::endl;
         } else {
-             std::cout << "    - Accumulated local Hessian norm: " << A.norm() << ", Gradient norm: " << b.norm() << std::endl;
+             std::cout << "[IMUSuperCostTerm DEBUG | buildGaussNewtonTerms] Accumulated local Hessian norm: " << A.norm() << ", Gradient norm: " << b.norm() << std::endl;
         }
 #endif
 

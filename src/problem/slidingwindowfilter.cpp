@@ -47,7 +47,7 @@ namespace finalicp {
         if (variables.empty()) return;
 
 #ifdef DEBUG
-            std::cout << "--- [SlidingWindowFilter DEBUG | marginalizeVariable] Starting Marginalization for " << variables.size() << " variables ---" << std::endl;
+            std::cout << "[SlidingWindowFilter DEBUG | marginalizeVariable] Starting Marginalization for " << variables.size() << " variables" << std::endl;
 #endif
 
         ///
@@ -84,8 +84,8 @@ namespace finalicp {
         }
 
 #ifdef DEBUG
-        std::cout << "    - Identified " << to_remove.size() << " variables to be marginalized out." << std::endl;
-        std::cout << "    - Total variables in current problem: " << state_vector.getNumberOfStates() << std::endl;
+        std::cout << "[SlidingWindowFilter DEBUG | marginalizeVariable] Identified " << to_remove.size() << " variables to be marginalized out." << std::endl;
+        std::cout << "[SlidingWindowFilter DEBUG | marginalizeVariable] Total variables in current problem: " << state_vector.getNumberOfStates() << std::endl;
 #endif
 
         //
@@ -114,7 +114,7 @@ namespace finalicp {
         cost_terms_ = active_cost_terms;
 
 #ifdef DEBUG
-        std::cout << "    - Built system with " << active_cost_terms.size() << " remaining active cost terms." << std::endl;
+        std::cout << "[SlidingWindowFilter DEBUG | marginalizeVariable] Built system with " << active_cost_terms.size() << " remaining active cost terms." << std::endl;
 #endif
         /// \todo use sparse matrix
         Eigen::MatrixXd Aupper(A_.toEigen(false));
@@ -124,7 +124,7 @@ namespace finalicp {
         // add the cached terms (always top-left block)
         if (fixed_A_.size() > 0) {
 #ifdef DEBUG
-            std::cout << "    - Applying prior from previous marginalization (Size: " << fixed_A_.rows() << "x" << fixed_A_.cols() << ")" << std::endl;
+            std::cout << "[SlidingWindowFilter DEBUG | marginalizeVariable] Applying prior from previous marginalization (Size: " << fixed_A_.rows() << "x" << fixed_A_.cols() << ")" << std::endl;
 #endif
             A.topLeftCorner(fixed_A_.rows(), fixed_A_.cols()) += fixed_A_;
             b.head(fixed_b_.size()) += fixed_b_;
@@ -134,7 +134,7 @@ namespace finalicp {
         const auto fixed_state_size = fixed_state_vector.getStateSize();
         if (fixed_state_size > 0) {
 #ifdef DEBUG
-            std::cout << "    - Performing Schur complement. Marginalizing " << fixed_state_size << " dimensions." << std::endl;
+            std::cout << "[SlidingWindowFilter DEBUG | marginalizeVariable] Performing Schur complement. Marginalizing " << fixed_state_size << " dimensions." << std::endl;
 #endif
             Eigen::MatrixXd A00(A.topLeftCorner(fixed_state_size, fixed_state_size));
 #ifdef DEBUG
@@ -151,7 +151,7 @@ namespace finalicp {
             fixed_A_ = A11 - A10 * A00.inverse() * A10.transpose();
             fixed_b_ = b1 - A10 * A00.inverse() * b0;
 #ifdef DEBUG
-            std::cout << "    - New prior created. Size: " << fixed_A_.rows() << "x" << fixed_A_.cols() << ", Norm: " << fixed_A_.norm() << std::endl;
+            std::cout << "[SlidingWindowFilter DEBUG | marginalizeVariable] New prior created. Size: " << fixed_A_.rows() << "x" << fixed_A_.cols() << ", Norm: " << fixed_A_.norm() << std::endl;
 #endif
         } else {
             fixed_A_ = A;
@@ -173,7 +173,7 @@ namespace finalicp {
         }
         getStateVector();
 #ifdef DEBUG
-        std::cout << "--- [SlidingWindowFilter DEBUG | marginalizeVariable] Marginalization Complete. " << variables_.size() << " variables remain. ---" << std::endl;
+        std::cout << "[SlidingWindowFilter DEBUG | marginalizeVariable] Marginalization Complete. " << variables_.size() << " variables remain." << std::endl;
 #endif
     }
 
@@ -296,19 +296,37 @@ namespace finalicp {
         Eigen::MatrixXd A(Aupper.selfadjointView<Eigen::Upper>());
         Eigen::VectorXd b(b_.toEigen());
 
+#ifdef DEBUG
+        // Print the matrix and vector immediately after they are constructed from cost terms
+        std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Matrix A (Hessian) after accumulating cost terms ("
+                  << A.rows() << "x" << A.cols() << "):" << std::endl;
+        std::cout << A << std::endl;
+        std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Vector b (gradient) after accumulating cost terms ("
+                  << b.size() << "x1):" << std::endl;
+        std::cout << b.transpose() << std::endl; // Print transpose for better console layout
+#endif
+
         if (fixed_A_.size() > 0) {
 #ifdef DEBUG
-            std::cout << "    - Applying prior from marginalization (Size: " << fixed_A_.rows() << "x" << fixed_A_.cols() << ")" << std::endl;
+            std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Applying prior from marginalization (Size: " << fixed_A_.rows() << "x" << fixed_A_.cols() << ")" << std::endl;
 #endif
             A.topLeftCorner(fixed_A_.rows(), fixed_A_.cols()) += fixed_A_;
             b.head(fixed_b_.size()) += fixed_b_;
+
+#ifdef DEBUG
+            // Print the matrix and vector again after applying the marginalization prior
+            std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Matrix A after applying marginalization prior:" << std::endl;
+            std::cout << A << std::endl;
+            std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Vector b after applying marginalization prior:" << std::endl;
+            std::cout << b.transpose() << std::endl;
+#endif
         }
 
         // marginalize the fixed variables
         const auto marginalize_state_size = marginalize_state_vector_->getStateSize();
         if (marginalize_state_size > 0) {
 #ifdef DEBUG
-            std::cout << "    - buildGaussNewtonTerms is marginalizing " << marginalize_state_size << " dimensions to form final system." << std::endl;
+            std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] buildGaussNewtonTerms is marginalizing " << marginalize_state_size << " dimensions to form final system." << std::endl;
 #endif
             Eigen::MatrixXd A00(A.topLeftCorner(marginalize_state_size, marginalize_state_size));
             Eigen::MatrixXd A10(A.bottomLeftCorner(A.rows() - marginalize_state_size, marginalize_state_size));
@@ -323,7 +341,7 @@ namespace finalicp {
             gradient_vector = b;
         }
 #ifdef DEBUG
-        std::cout << "    - Final system built. Hessian non-zeros: " << approximate_hessian.nonZeros()
+        std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms]Final system built. Hessian non-zeros: " << approximate_hessian.nonZeros()
                 << ", Gradient norm: " << gradient_vector.norm() << std::endl;
 #endif
     }

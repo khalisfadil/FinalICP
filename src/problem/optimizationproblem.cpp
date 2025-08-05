@@ -99,12 +99,12 @@ namespace finalicp {
             }
 #ifdef DEBUG
             else {
-                std::cout << "    - Skipping locked variable with key: " << state_var->key() << std::endl;
+                std::cout << "[OptimizationProblem DEBUG | getStateVector] Skipping locked variable with key: " << state_var->key() << std::endl;
             }
 #endif
         }
 #ifdef DEBUG
-        std::cout << "    - Assembly complete. Added " << unlocked_count << " unlocked variables to the active state." << std::endl;
+        std::cout << "[OptimizationProblem DEBUG | getStateVector] Assembly complete. Added " << unlocked_count << " unlocked variables to the active state." << std::endl;
 #endif
         return state_vector_;
     }
@@ -135,6 +135,18 @@ namespace finalicp {
             }
         }
 
+#ifdef DEBUG
+        // --- [DEBUG] Print the dense matrix and vector after they are constructed ---
+        Eigen::MatrixXd Adense = A_.toEigen(true); // Convert to dense for printing
+        Eigen::VectorXd bdense = b_.toEigen();
+        std::cout << "[OptimizationProblem DEBUG | buildGaussNewtonTerms] Matrix A (Hessian) after accumulating cost terms ("
+                  << Adense.rows() << "x" << Adense.cols() << "):" << std::endl;
+        std::cout << Adense << std::endl;
+        std::cout << "[OptimizationProblem DEBUG | buildGaussNewtonTerms] Vector b (gradient) after accumulating cost terms ("
+                  << bdense.size() << "x1):" << std::endl;
+        std::cout << bdense.transpose() << std::endl; // Print transpose for better console layout
+#endif
+
         approximate_hessian = A_.toEigen(false);
         gradient_vector = b_.toEigen();
 
@@ -150,7 +162,7 @@ namespace finalicp {
             std::cerr << "[OptimizationProblem DEBUG | buildGaussNewtonTerms] CRITICAL: Assembled Gradient contains non-finite values!" << std::endl;
         }
         if (hessian_ok && gradient_ok) {
-            std::cout << "    - System built successfully. Hessian non-zeros: " << approximate_hessian.nonZeros()
+            std::cout << "[OptimizationProblem DEBUG | getStateVector] System built successfully. Hessian non-zeros: " << approximate_hessian.nonZeros()
                       << ", Gradient norm: " << gradient_vector.norm() << std::endl;
         }
 #endif
