@@ -263,12 +263,12 @@ namespace finalicp {
             }
             state_vector_->addStateVariable(var.variable);
         }
-#ifdef DEBUG
-        // --- [IMPROVEMENT] Log the partitioning of the state vector ---
-        std::cout << "[SlidingWindowFilter DEBUG | getStateVector] getStateVector called. Partitioning: "
-                << marginalize_state_vector_->getNumberOfStates() << " to be marginalized, "
-                << active_state_vector_->getNumberOfStates() << " active." << std::endl;
-#endif
+// #ifdef DEBUG
+//         // --- [IMPROVEMENT] Log the partitioning of the state vector ---
+//         std::cout << "[SlidingWindowFilter DEBUG | getStateVector] getStateVector called. Partitioning: "
+//                 << marginalize_state_vector_->getNumberOfStates() << " to be marginalized, "
+//                 << active_state_vector_->getNumberOfStates() << " active." << std::endl;
+// #endif
         return active_state_vector_;
     }
 

@@ -39,12 +39,12 @@ namespace finalicp {
 
 #ifdef DEBUG
                     // --- [IMPROVEMENT] Log creation and sanity-check the transition matrix ---
-                    std::cout << " extrapolating pose with Singer model over dt = " << tau << "s." << std::endl;
+                    std::cout << "[SINGER PoseExtrapolator DEBUG] extrapolating pose with Singer model over dt = " << tau << "s." << std::endl;
                     if (!Phi_.allFinite()) {
                         std::cerr << "[SINGER PoseExtrapolator DEBUG] CRITICAL: Computed transition matrix Phi_ contains non-finite values!" << std::endl;
                     } else {
                         // Logging the norm is a good quick check for stability.
-                        std::cout << "    - Transition matrix norm: " << Phi_.norm() << std::endl;
+                        std::cout << "[SINGER PoseExtrapolator DEBUG] Transition matrix norm: " << Phi_.norm() << std::endl;
                     }
 #endif
                 }

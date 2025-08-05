@@ -23,7 +23,7 @@ namespace finalicp {
                 Phi_ = getTran(tau);
 #ifdef DEBUG
                 // --- [IMPROVEMENT] Log creation and sanity-check the transition matrix ---
-                std::cout << " extrapolating pose with const_acc model over dt = " << tau << "s." << std::endl;
+                std::cout << "[CONSTACC PoseExtrapolator DEBUG] extrapolating pose with const_acc model over dt = " << tau << "s." << std::endl;
                 if (tau < 0) {
                     std::cerr << "[CONSTACC PoseExtrapolator DEBUG] WARNING: Extrapolating with a negative time delta (tau)!" << std::endl;
                 }
