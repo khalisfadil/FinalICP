@@ -48,8 +48,8 @@ namespace finalicp {
 #ifdef DEBUG
                     // --- [IMPROVEMENT] Log creation and configuration parameters ---
                     std::cout << "[SINGER Interface DEBUG] Creating Singer::Interface." << std::endl;
-                    std::cout << "    - Alpha Diag: " << alpha_diag_.transpose() << std::endl;
-                    std::cout << "    - Qc Diag:    " << Qc_diag_.transpose() << std::endl;
+                    std::cout << "[SINGER Interface DEBUG] Alpha Diag: " << alpha_diag_.transpose() << std::endl;
+                    std::cout << "[SINGER Interface DEBUG] Qc Diag:    " << Qc_diag_.transpose() << std::endl;
 #endif
                     }
                 

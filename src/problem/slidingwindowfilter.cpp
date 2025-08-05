@@ -341,7 +341,7 @@ namespace finalicp {
             gradient_vector = b;
         }
 #ifdef DEBUG
-        std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms]Final system built. Hessian non-zeros: " << approximate_hessian.nonZeros()
+        std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Final system built. Hessian non-zeros: " << approximate_hessian.nonZeros()
                 << ", Gradient norm: " << gradient_vector.norm() << std::endl;
 #endif
     }

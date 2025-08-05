@@ -43,13 +43,13 @@ namespace finalicp {
 
 #ifdef DEBUG
     // --- [KEY DEBUG] CHECK THE HEALTH OF THE LINEAR SYSTEM ---
-    std::cout << "[GNSNVA DEBUG] Built system. Grad norm: " << grad_norm << ". Hessian non-zeros: " << approximate_hessian.nonZeros() << std::endl;
+    std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] Built system. Grad norm: " << grad_norm << ". Hessian non-zeros: " << approximate_hessian.nonZeros() << std::endl;
     if (!gradient_vector.allFinite()) {
-        std::cout << "[GNSNVA DEBUG] CRITICAL: Gradient vector contains non-finite values!" << std::endl;
+        std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Gradient vector contains non-finite values!" << std::endl;
         return false; // Abort this iteration
     }
     if (!approximate_hessian.coeffs().allFinite()) {
-        std::cout << "[GNSNVA DEBUG] CRITICAL: Hessian matrix contains non-finite values!" << std::endl;
+        std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Hessian matrix contains non-finite values!" << std::endl;
         return false; // Abort this iteration
     }
 #endif
@@ -62,9 +62,9 @@ namespace finalicp {
 #ifdef DEBUG
     // --- [KEY DEBUG] CHECK THE HEALTH OF THE SOLUTION (THE STATE UPDATE) ---
     double perturbation_norm = perturbation.norm();
-    std::cout << "[GNSNVA DEBUG] Solved system. Perturbation norm: " << perturbation_norm << std::endl;
+    std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] Solved system. Perturbation norm: " << perturbation_norm << std::endl;
     if (!perturbation.allFinite()) {
-        std::cout << "[GNSNVA DEBUG] CRITICAL: Perturbation (state update) is non-finite! System solve failed." << std::endl;
+        std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Perturbation (state update) is non-finite! System solve failed." << std::endl;
         return false; // Abort this iteration
     }
 #endif
@@ -74,7 +74,7 @@ namespace finalicp {
             if (expected_delta_cost < 0.0) {
                 throw std::runtime_error("Expected delta cost must be >= 0.0");
 #ifdef DEBUG
-                std::cout << "[GNSNVA DEBUG] CRITICAL: Expected delta cost is negative (" << expected_delta_cost << "). The descent direction is invalid." << std::endl;
+                std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Expected delta cost is negative (" << expected_delta_cost << "). The descent direction is invalid." << std::endl;
 #endif
             }
             if (expected_delta_cost < 1.0e-5 || fabs(expected_delta_cost / cost) < 1.0e-7) {
@@ -88,7 +88,7 @@ namespace finalicp {
                     cost = proposeUpdate(alpha * perturbation);
                     update_time += timer.milliseconds();
 #ifdef DEBUG
-                    std::cout << "[GNSNVA DEBUG] Line search it: " << j << " prev_cost: " << prev_cost_ << " new_cost: " << cost << " alpha: " << alpha << std::endl;
+                    std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] Line search it: " << j << " prev_cost: " << prev_cost_ << " new_cost: " << cost << " alpha: " << alpha << std::endl;
 #endif
                     if (cost <= prev_cost_) {
                         acceptProposedState();
@@ -113,22 +113,22 @@ namespace finalicp {
         if (curr_iteration_ == 1) {
             // clang-format off
             std::cout << "[GNSNVA DEBUG] Report: " << std::endl;
-            std::cout << std::right << std::setw( 4) << std::setfill(' ') << "iter"
-                        << std::right << std::setw(12) << std::setfill(' ') << "cost"
-                        << std::right << std::setw(12) << std::setfill(' ') << "build (ms)"
-                        << std::right << std::setw(12) << std::setfill(' ') << "solve (ms)"
-                        << std::right << std::setw(13) << std::setfill(' ') << "update (ms)"
-                        << std::right << std::setw(11) << std::setfill(' ') << "time (ms)"
+            std::cout << std::right << std::setw( 15) << std::setfill(' ') << "iter"
+                        << std::right << std::setw(15) << std::setfill(' ') << "cost"
+                        << std::right << std::setw(15) << std::setfill(' ') << "build (ms)"
+                        << std::right << std::setw(15) << std::setfill(' ') << "solve (ms)"
+                        << std::right << std::setw(15) << std::setfill(' ') << "update (ms)"
+                        << std::right << std::setw(15) << std::setfill(' ') << "time (ms)"
                         << std::endl;
             // clang-format on
         }
         // clang-format off
-        std::cout << std::right << std::setw( 4) << std::setfill(' ') << curr_iteration_
-                << std::right << std::setw(12) << std::setfill(' ') << std::setprecision(5) << cost
-                << std::right << std::setw(12) << std::setfill(' ') << std::setprecision(3) << std::fixed << build_time << std::resetiosflags(std::ios::fixed)
-                << std::right << std::setw(12) << std::setfill(' ') << std::setprecision(3) << std::fixed << solve_time << std::resetiosflags(std::ios::fixed)
-                << std::right << std::setw(13) << std::setfill(' ') << std::setprecision(3) << std::fixed << update_time << std::resetiosflags(std::ios::fixed)
-                << std::right << std::setw(11) << std::setfill(' ') << std::setprecision(3) << std::fixed << iter_timer.milliseconds() << std::resetiosflags(std::ios::fixed)
+        std::cout << std::right << std::setw( 15) << std::setfill(' ') << curr_iteration_
+                << std::right << std::setw(15) << std::setfill(' ') << std::setprecision(5) << cost
+                << std::right << std::setw(15) << std::setfill(' ') << std::setprecision(3) << std::fixed << build_time << std::resetiosflags(std::ios::fixed)
+                << std::right << std::setw(15) << std::setfill(' ') << std::setprecision(3) << std::fixed << solve_time << std::resetiosflags(std::ios::fixed)
+                << std::right << std::setw(15) << std::setfill(' ') << std::setprecision(3) << std::fixed << update_time << std::resetiosflags(std::ios::fixed)
+                << std::right << std::setw(15) << std::setfill(' ') << std::setprecision(3) << std::fixed << iter_timer.milliseconds() << std::resetiosflags(std::ios::fixed)
                 << std::endl;
         std::cout << "[GNSNVA DEBUG] End report. " << std::endl;
         // clang-format on

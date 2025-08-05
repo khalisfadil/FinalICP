@@ -34,7 +34,7 @@ namespace finalicp {
         while (!solver_converged_) iterate();
 
 #ifdef DEBUG
-            std::cout << "Total Optimization Time: " << timer.milliseconds() << " ms" << std::endl;
+            std::cout << "[SOLVERBASE DEBUG | optimize] Total Optimization Time: " << timer.milliseconds() << " ms" << std::endl;
 #endif
     }
 
@@ -45,19 +45,17 @@ namespace finalicp {
     void SolverBase::iterate() {
         if (solver_converged_) {
 #ifdef DEBUG
-            std::cout << "[SOLVERBASE DEBUG] Terminating: Requested an iteration when solver has already converged, iteration ignored.";
+            std::cout << "[SOLVERBASE DEBUG | iterate] Terminating: Requested an iteration when solver has already converged, iteration ignored.";
 #endif
             return;
         }
 
 #ifdef DEBUG
         if (curr_iteration_ == 0) {
-            std::cout << "[SOLVERBASE DEBUG]" << std::endl;
-            std::cout << "Begin Optimization" << std::endl;
-            std::cout << "------------------" << std::endl;
-            std::cout << "Number of States: " << state_vector_.lock()->getNumberOfStates() << std::endl;
-            std::cout << "Number of Cost Terms: " << problem_.getNumberOfCostTerms() << std::endl;
-            std::cout << "Initial Cost: " << curr_cost_ << std::endl;
+            std::cout << "[SOLVERBASE DEBUG | iterate] Begin Optimization" << std::endl;
+            std::cout << "[SOLVERBASE DEBUG | iterate] Number of States: " << state_vector_.lock()->getNumberOfStates() << std::endl;
+            std::cout << "[SOLVERBASE DEBUG | iterate] Number of Cost Terms: " << problem_.getNumberOfCostTerms() << std::endl;
+            std::cout << "[SOLVERBASE DEBUG | iterate] Initial Cost: " << curr_cost_ << std::endl;
         }
 #endif
 
@@ -75,7 +73,7 @@ namespace finalicp {
             term_ = TERMINATE_CONVERGED_ZERO_GRADIENT;
             solver_converged_ = true;
 #ifdef DEBUG
-            if (params_.verbose) std::cout << "[SOLVERBASE DEBUG] Terminating: Step failed but gradient norm is near zero (" << grad_norm << ")." << std::endl;
+            if (params_.verbose) std::cout << "[SOLVERBASE DEBUG | iterate] Terminating: Step failed but gradient norm is near zero (" << grad_norm << ")." << std::endl;
 #endif
         } else if (!step_success) {
             term_ = TERMINATE_STEP_UNSUCCESSFUL;
@@ -95,25 +93,25 @@ namespace finalicp {
             term_ = TERMINATE_COST_INCREASED;
             solver_converged_ = true;
 #ifdef DEBUG
-            if (params_.verbose) std::cout << "[SOLVERBASE DEBUG] Terminating: Cost increased from " << prev_cost_ << " to " << curr_cost_ << ". (Divergence)" << std::endl;
+            if (params_.verbose) std::cout << "[SOLVERBASE DEBUG| iterate] Terminating: Cost increased from " << prev_cost_ << " to " << curr_cost_ << ". (Divergence)" << std::endl;
 #endif
         } else if (curr_cost_ <= params_.absolute_cost_threshold) {
             term_ = TERMINATE_CONVERGED_ABSOLUTE_ERROR;
             solver_converged_ = true;
 #ifdef DEBUG
-            if (params_.verbose) std::cout << "[SOLVERBASE DEBUG] Terminating: Cost (" << curr_cost_ << ") is below absolute threshold (" << params_.absolute_cost_threshold << ")." << std::endl;
+            if (params_.verbose) std::cout << "[SOLVERBASE DEBUG | iterate] Terminating: Cost (" << curr_cost_ << ") is below absolute threshold (" << params_.absolute_cost_threshold << ")." << std::endl;
 #endif
         } else if (cost_change <= params_.absolute_cost_change_threshold) {
             term_ = TERMINATE_CONVERGED_ABSOLUTE_CHANGE;
             solver_converged_ = true;
 #ifdef DEBUG
-            if (params_.verbose) std::cout << "[SOLVERBASE DEBUG] Terminating: Cost change (" << cost_change << ") is below absolute threshold (" << params_.absolute_cost_change_threshold << ")." << std::endl;
+            if (params_.verbose) std::cout << "[SOLVERBASE DEBUG| iterate] Terminating: Cost change (" << cost_change << ") is below absolute threshold (" << params_.absolute_cost_change_threshold << ")." << std::endl;
 #endif
         } else if (rel_cost_change <= params_.relative_cost_change_threshold) {
             term_ = TERMINATE_CONVERGED_RELATIVE_CHANGE;
             solver_converged_ = true;
 #ifdef DEBUG
-            if (params_.verbose) std::cout << "[SOLVERBASE DEBUG] Terminating: Relative cost change (" << rel_cost_change << ") is below relative threshold (" << params_.relative_cost_change_threshold << ")." << std::endl;
+            if (params_.verbose) std::cout << "[SOLVERBASE DEBUG| iterate] Terminating: Relative cost change (" << rel_cost_change << ") is below relative threshold (" << params_.relative_cost_change_threshold << ")." << std::endl;
 #endif
         }
 
@@ -140,7 +138,7 @@ namespace finalicp {
         // --- [IMPROVEMENT] INVALID UPDATE DETECTION ---
         // Checks if the proposed state update resulted in an invalid cost.
         if (!std::isfinite(new_cost)) {
-             std::cerr << "[SOLVERBASE DEBUG] CRITICAL: Proposed update resulted in a non-finite cost! The perturbation may be invalid or too large." << std::endl;
+             std::cerr << "[SOLVERBASE DEBUG | proposeUpdate] CRITICAL: Proposed update resulted in a non-finite cost! The perturbation may be invalid or too large." << std::endl;
         }
 #endif
         return new_cost;

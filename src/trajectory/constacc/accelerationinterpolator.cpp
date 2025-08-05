@@ -38,7 +38,7 @@ namespace finalicp {
                 lambda_ = (Tran_tau - omega_ * Tran_T);
 
 #ifdef DEBUG
-                std::cout << " interpolating acceleration with const_acc model. Interval T: " << T << "s, at tau: " << tau << "s." << std::endl;
+                std::cout << "[CONSTACC AccelerationInterpolator DEBUG] interpolating acceleration with const_acc model. Interval T: " << T << "s, at tau: " << tau << "s." << std::endl;
                 if (T <= 0) {
                     std::cerr << "[CONSTACC AccelerationInterpolator DEBUG] CRITICAL: Total time interval T is zero or negative!" << std::endl;
                 }
