@@ -120,19 +120,51 @@ namespace finalicp {
         std::cout << "[P2PSuperCostTerm DEBUG | initP2PMatches] Initializing... Grouping " << p2p_matches_.size() << " matches by timestamp." << std::endl;
 #endif
         p2p_match_bins_.clear();
-        for (int i = 0; i < (int)p2p_matches_.size(); ++i) {
-            const auto &p2p_match = p2p_matches_.at(i);
-            const auto &timestamp = p2p_match.timestamp;
-            if (p2p_match_bins_.find(timestamp) == p2p_match_bins_.end()) {
-                p2p_match_bins_[timestamp] = {i};
-            } else {
-                p2p_match_bins_[timestamp].push_back(i);
+
+        // This uses a two-stage map-reduce pattern for thread-safe parallel processing.
+        // 1. Parallel Map: Each thread creates its own local map of timestamps to match indices.
+        // 2. Sequential Reduce: The main thread merges all the local maps after the parallel work is done.
+        if (p2p_matches_.size() < options_.sequential_threshold) {
+            // --- Sequential Path for small match sets ---
+            for (int i = 0; i < (int)p2p_matches_.size(); ++i) {
+                const auto &p2p_match = p2p_matches_.at(i);
+                p2p_match_bins_[p2p_match.timestamp].push_back(i);
+            }
+        } else {
+            // --- Parallel Path for large match sets ---
+            using LocalMatchBinType = std::map<double, std::vector<int>>;
+            tbb::enumerable_thread_specific<LocalMatchBinType> thread_local_match_bins;
+
+            tbb::parallel_for(tbb::blocked_range<size_t>(0, p2p_matches_.size()),
+                [&](const tbb::blocked_range<size_t>& range) {
+                
+                LocalMatchBinType& local_map = thread_local_match_bins.local();
+                for (size_t i = range.begin(); i != range.end(); ++i) {
+                    const auto &p2p_match = p2p_matches_.at(i);
+                    local_map[p2p_match.timestamp].push_back(i);
+                }
+            });
+
+            // Merge the thread-local maps into the main bin sequentially
+            for (const auto& local_map : thread_local_match_bins) {
+                for (const auto& pair : local_map) {
+                    p2p_match_bins_[pair.first].insert(
+                        p2p_match_bins_[pair.first].end(),
+                        pair.second.begin(),
+                        pair.second.end()
+                    );
+                }
             }
         }
+
+        // Extract unique measurement times from the now-populated bins
         meas_times_.clear();
-        for (auto it = p2p_match_bins_.begin(); it != p2p_match_bins_.end(); it++) {
-            meas_times_.push_back(it->first);
+        meas_times_.reserve(p2p_match_bins_.size());
+        for (auto const& [time, val] : p2p_match_bins_) {
+            meas_times_.push_back(time);
         }
+
+        // Initialize interpolation matrices, which can also be done in parallel
         initialize_interp_matrices_();
     }
 
@@ -142,13 +174,26 @@ namespace finalicp {
 
     void P2PSuperCostTerm::initialize_interp_matrices_() {
         const Eigen::Matrix<double, 6, 1> ones = Eigen::Matrix<double, 6, 1>::Ones();
-        for (const double &time : meas_times_) {
-            if (interp_mats_.find(time) == interp_mats_.end()) {
+        
+        // Each thread gets a private, local map. After the parallel loop,
+        // we merge the results into the main class member sequentially.
+        using LocalInterpMapType = std::map<double, std::pair<Eigen::Matrix3d, Eigen::Matrix3d>>;
+        tbb::enumerable_thread_specific<LocalInterpMapType> thread_local_interp_maps;
+
+        // --- 1. Parallel Computation into Local Containers ---
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, meas_times_.size()),
+            [&](const tbb::blocked_range<size_t>& range) {
+            
+            // Get this thread's private map.
+            LocalInterpMapType& local_map = thread_local_interp_maps.local();
+
+            for (size_t i = range.begin(); i != range.end(); ++i) {
+                const double &time = meas_times_[i];
+
                 // Get Lambda, Omega for this time
                 const double tau = time - time1_.seconds();
                 const double kappa = knot2_->time().seconds() - time;
 
-                
                 const Matrix18d Q_tau = interface_->getQPublic(tau, ones);
                 const Matrix18d Tran_kappa = interface_->getTranPublic(kappa);
                 const Matrix18d Tran_tau = interface_->getTranPublic(tau);
@@ -158,35 +203,30 @@ namespace finalicp {
                 Eigen::Matrix3d omega = Eigen::Matrix3d::Zero();
                 Eigen::Matrix3d lambda = Eigen::Matrix3d::Zero();
 
-                omega(0, 0) = omega18(0, 0);
-                omega(0, 1) = omega18(0, 6);
-                omega(0, 2) = omega18(0, 12);
-                omega(1, 0) = omega18(6, 0);
-                omega(1, 1) = omega18(6, 6);
-                omega(1, 2) = omega18(6, 12);
-                omega(2, 0) = omega18(12, 0);
-                omega(2, 1) = omega18(12, 6);
-                omega(2, 2) = omega18(12, 12);
+                omega(0, 0) = omega18(0, 0); omega(0, 1) = omega18(0, 6); omega(0, 2) = omega18(0, 12);
+                omega(1, 0) = omega18(6, 0); omega(1, 1) = omega18(6, 6); omega(1, 2) = omega18(6, 12);
+                omega(2, 0) = omega18(12, 0); omega(2, 1) = omega18(12, 6); omega(2, 2) = omega18(12, 12);
 
-                lambda(0, 0) = lambda18(0, 0);
-                lambda(0, 1) = lambda18(0, 6);
-                lambda(0, 2) = lambda18(0, 12);
-                lambda(1, 0) = lambda18(6, 0);
-                lambda(1, 1) = lambda18(6, 6);
-                lambda(1, 2) = lambda18(6, 12);
-                lambda(2, 0) = lambda18(12, 0);
-                lambda(2, 1) = lambda18(12, 6);
-                lambda(2, 2) = lambda18(12, 12);
+                lambda(0, 0) = lambda18(0, 0); lambda(0, 1) = lambda18(0, 6); lambda(0, 2) = lambda18(0, 12);
+                lambda(1, 0) = lambda18(6, 0); lambda(1, 1) = lambda18(6, 6); lambda(1, 2) = lambda18(6, 12);
+                lambda(2, 0) = lambda18(12, 0); lambda(2, 1) = lambda18(12, 6); lambda(2, 2) = lambda18(12, 12);
 
-#ifdef DEBUG
-                // --- [IMPROVEMENT] Sanity-check the computed matrices ---
+    #ifdef DEBUG
                 if (!omega.allFinite() || !lambda.allFinite()) {
-                     std::cerr << "[P2PSuperCostTerm DEBUG | initialize_interp_matrices_] CRITICAL: Computed interpolation matrices for time " << time << " are non-finite!" << std::endl;
+                    std::cerr << "[P2PSuperCostTerm DEBUG | initialize_interp_matrices_] CRITICAL: Computed interpolation matrices for time " << time << " are non-finite!" << std::endl;
                 }
-#endif
-
-                interp_mats_.emplace(time, std::make_pair(omega, lambda));
+    #endif
+                // Write to the thread-local map. This is safe because no other thread can access it.
+                local_map.insert({time, {omega, lambda}});
             }
+        });
+
+        // --- 2. Sequential Merge Step ---
+        // This part runs only on the main thread after all parallel work is complete.
+        interp_mats_.clear();
+        for (const auto& local_map : thread_local_interp_maps) {
+            // 'insert' is an efficient way to merge maps.
+            interp_mats_.insert(local_map.begin(), local_map.end());
         }
     }
 

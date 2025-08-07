@@ -16,6 +16,10 @@
 #include <iomanip>
 #include <iostream>
 
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#include <tbb/enumerable_thread_specific.h>
+
 namespace finalicp {
 
     struct P2PMatch {
@@ -37,6 +41,7 @@ namespace finalicp {
             enum class LOSS_FUNC { L2, DCS, CAUCHY, GM };
 
             struct Options {
+                
                 int sequential_threshold = 500;
                 int num_threads = 1;
                 LOSS_FUNC p2p_loss_func = LOSS_FUNC::CAUCHY;
