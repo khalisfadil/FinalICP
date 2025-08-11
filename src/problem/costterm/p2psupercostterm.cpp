@@ -124,7 +124,7 @@ namespace finalicp {
         // This uses a two-stage map-reduce pattern for thread-safe parallel processing.
         // 1. Parallel Map: Each thread creates its own local map of timestamps to match indices.
         // 2. Sequential Reduce: The main thread merges all the local maps after the parallel work is done.
-        if (p2p_matches_.size() < options_.sequential_threshold) {
+        if (p2p_matches_.size() < static_cast<size_t>(options_.sequential_threshold)) {
             // --- Sequential Path for small match sets ---
             for (int i = 0; i < (int)p2p_matches_.size(); ++i) {
                 const auto &p2p_match = p2p_matches_.at(i);

@@ -296,15 +296,15 @@ namespace finalicp {
         Eigen::MatrixXd A(Aupper.selfadjointView<Eigen::Upper>());
         Eigen::VectorXd b(b_.toEigen());
 
-#ifdef DEBUG
-        // Print the matrix and vector immediately after they are constructed from cost terms
-        std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Matrix A (Hessian) after accumulating cost terms ("
-                  << A.rows() << "x" << A.cols() << "):" << std::endl;
-        std::cout << A << std::endl;
-        std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Vector b (gradient) after accumulating cost terms ("
-                  << b.size() << "x1):" << std::endl;
-        std::cout << b.transpose() << std::endl; // Print transpose for better console layout
-#endif
+// #ifdef DEBUG
+//         // Print the matrix and vector immediately after they are constructed from cost terms
+//         std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Matrix A (Hessian) after accumulating cost terms ("
+//                   << A.rows() << "x" << A.cols() << "):" << std::endl;
+//         std::cout << A << std::endl;
+//         std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Vector b (gradient) after accumulating cost terms ("
+//                   << b.size() << "x1):" << std::endl;
+//         std::cout << b.transpose() << std::endl; // Print transpose for better console layout
+// #endif
 
         if (fixed_A_.size() > 0) {
 #ifdef DEBUG
@@ -315,10 +315,10 @@ namespace finalicp {
 
 #ifdef DEBUG
             // Print the matrix and vector again after applying the marginalization prior
-            std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Matrix A after applying marginalization prior:" << std::endl;
-            std::cout << A << std::endl;
-            std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Vector b after applying marginalization prior:" << std::endl;
-            std::cout << b.transpose() << std::endl;
+            // std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Matrix A after applying marginalization prior:" << std::endl;
+            // std::cout << A << std::endl;
+            // std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] Vector b after applying marginalization prior:" << std::endl;
+            // std::cout << b.transpose() << std::endl;
 #endif
         }
 
