@@ -61,19 +61,19 @@ namespace finalicp {
                 const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + lambda(0, 2) * dw1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2 + omega(0, 2) * J_21_inv_curl_dw2;
                 const math::se3::Transformation T_i1(xi_i1);
                 const math::se3::Transformation T_i0 = T_i1 * T1;
-                const Eigen::Matrix4d T_mr = T_i0.inverse().matrix();
+                const Eigen::Matrix4d Tb2m = T_i0.inverse().matrix();
 
                 double cost_i = 0.0;
                 for (const int &match_idx : bin_indices) {
                     const auto &p2p_match = p2p_matches_.at(match_idx);
-                    const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
+                    const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - Tb2m.block<3, 3>(0, 0) * p2p_match.query - Tb2m.block<3, 1>(0, 3));
                     double match_cost = p2p_loss_func_->cost(fabs(raw_error));
                     if (!std::isnan(match_cost)) {cost_i += match_cost;}
 #ifdef DEBUG
                     // Log details for the very first point-to-plane match only to avoid spam
                     if (i == 0 && match_idx == bin_indices[0]) {
-                        if (!T_mr.allFinite()) {
-                            std::cerr << "[P2PSuperCostTerm DEBUG | cost] CRITICAL: Interpolated pose T_mr is non-finite!" << std::endl;
+                        if (!Tb2m.allFinite()) {
+                            std::cerr << "[P2PSuperCostTerm DEBUG | cost] CRITICAL: Interpolated pose Tb2m is non-finite!" << std::endl;
                         }
                         if (!std::isfinite(raw_error)) {
                              std::cerr << "[P2PSuperCostTerm DEBUG | cost] CRITICAL: Raw P2P error is non-finite!" << std::endl;
@@ -281,7 +281,7 @@ namespace finalicp {
                 const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + lambda(0, 2) * dw1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2 + omega(0, 2) * J_21_inv_curl_dw2;
                 const math::se3::Transformation T_i1(xi_i1);
                 const math::se3::Transformation T_i0 = T_i1 * T1;
-                const Eigen::Matrix4d T_mr = T_i0.inverse().matrix();
+                const Eigen::Matrix4d Tb2m = T_i0.inverse().matrix();
 
                 // Pose interpolation Jacobian
                 Eigen::Matrix<double, 6, 36> interp_jac = Eigen::Matrix<double, 6, 36>::Zero();
@@ -300,10 +300,10 @@ namespace finalicp {
 
                 for (const int &match_idx : bin_indices) {
                     const auto &p2p_match = p2p_matches_.at(match_idx);
-                    const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
+                    const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - Tb2m.block<3, 3>(0, 0) * p2p_match.query - Tb2m.block<3, 1>(0, 3));
                     const double sqrt_w = sqrt(p2p_loss_func_->weight(fabs(raw_error)));
                     error += sqrt_w * raw_error;
-                    Gmeas += sqrt_w * p2p_match.normal.transpose() * (T_mr * math::se3::point2fs(p2p_match.query)).block<3, 6>(0, 0);
+                    Gmeas += sqrt_w * p2p_match.normal.transpose() * (Tb2m * math::se3::point2fs(p2p_match.query)).block<3, 6>(0, 0);
                 }
 
                 const Eigen::Matrix<double, 1, 36> G = Gmeas * interp_jac;
