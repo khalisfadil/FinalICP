@@ -270,15 +270,19 @@ namespace finalicp {
                 A += G.transpose() * G;
                 b += (-1) * G.transpose() * error_gyro;
 #ifdef DEBUG
-                if (i == 0) {
-                    if (!interp_jac.allFinite()) {
-                        std::cerr << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
-                    }
-                    if (!G.allFinite()) {
-                        std::cerr << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Aggregated measurement Jacobian (G) is non-finite!" << std::endl;
-                    } else {
-                        std::cout << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] First timestamp bin: interp_jac norm: " << interp_jac.norm() << ", Gmeas norm: " << Gmeas.norm() << std::endl;
-                    }
+
+                if (!interp_jac.allFinite()) {
+                    std::cerr << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
+                }
+                if (!G.allFinite()) {
+                    std::cerr << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Aggregated measurement Jacobian (G) is non-finite!" << std::endl;
+                } else {
+                    std::cout << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] First timestamp bin: interp_jac_vel norm: " << interp_jac_vel.norm() << ", G norm: " << G.norm() << std::endl;
+                }
+                if (!isfinite(error)) {
+                    std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Calculater Error is non-finite!" << std::endl;
+                } else {
+                    std::cout << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] Calculated Error: " << error << std::endl;
                 }
 #endif
             } catch (const std::exception& e) {
