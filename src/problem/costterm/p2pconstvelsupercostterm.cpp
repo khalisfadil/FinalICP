@@ -79,6 +79,9 @@ namespace finalicp {
                 std::cerr << "[P2PCVSuperCostTerm | cost] exception at timestamp " << meas_times_[i] << ": (unknown)" << std::endl;
             }
         }
+#ifdef DEBUG
+        std::cout << "[P2PCVSuperCostTerm DEBUG | cost] Total P2P cost contribution: " << cost << std::endl;
+#endif
         return cost;
     }
 
@@ -102,48 +105,17 @@ namespace finalicp {
         std::cout << "[P2PCVSuperCostTerm DEBUG | initP2PMatches] Initializing... p2p_matches_ " << p2p_matches_.size() << " matches by timestamp." << std::endl;
 #endif
         p2p_match_bins_.clear();
-        if (p2p_matches_.size() < static_cast<size_t>(sequential_threshold_)){
-            // sequential method 
-            for (int i = 0; i < static_cast<int>(p2p_matches_.size()); ++i) {
-                const auto &p2p_match = p2p_matches_.at(i);
-                const auto &timestamp = p2p_match.timestamp;
-                if (p2p_match_bins_.find(timestamp) == p2p_match_bins_.end()) {
-                    p2p_match_bins_[timestamp] = {i};
-                } else {
-                    p2p_match_bins_[timestamp].push_back(i);
-                }
-            }
-        } else {
-            // parallel method
-            // --- Parallel Path for large match sets ---
-            using LocalMatchBinType = std::map<double, std::vector<int>>;
-            tbb::enumerable_thread_specific<LocalMatchBinType> thread_local_match_bins;
-            tbb::parallel_for(tbb::blocked_range<int>(0, p2p_matches_.size()),
-                [&](const tbb::blocked_range<int>& range) {
-                    LocalMatchBinType& local_map = thread_local_match_bins.local();
-                    for (int i = range.begin(); i != range.end(); ++i) {
-                        const auto &p2p_match = p2p_matches_.at(i);
-                        const auto &timestamp = p2p_match.timestamp;
-                        if (local_map.find(timestamp) == local_map.end()) {
-                            local_map[timestamp] = {i};
-                        } else {
-                            local_map[timestamp].push_back(i);
-                        }
-                    }
-                });
-
-            // Merge the thread-local maps into the main bin sequentially
-            for (const auto& local_map : thread_local_match_bins) {
-                for (const auto& pair : local_map) {
-                    p2p_match_bins_[pair.first].insert(
-                        p2p_match_bins_[pair.first].end(),
-                        pair.second.begin(),
-                        pair.second.end()
-                    );
-                }
+        // sequential method 
+        for (int i = 0; i < static_cast<int>(p2p_matches_.size()); ++i) {
+            const auto &p2p_match = p2p_matches_.at(i);
+            const auto &timestamp = p2p_match.timestamp;
+            if (p2p_match_bins_.find(timestamp) == p2p_match_bins_.end()) {
+                p2p_match_bins_[timestamp] = {i};
+            } else {
+                p2p_match_bins_[timestamp].push_back(i);
             }
         }
-
+      
         meas_times_.clear();
         meas_times_.reserve(p2p_match_bins_.size());
         for (auto it = p2p_match_bins_.begin(); it != p2p_match_bins_.end(); it++) {
@@ -162,73 +134,28 @@ namespace finalicp {
 #endif
         interp_mats_.clear();
         const Eigen::Matrix<double, 6, 1> ones = Eigen::Matrix<double, 6, 1>::Ones();
-        if (meas_times_.size() < static_cast<size_t>(sequential_threshold_)){
-            for (const double &time : meas_times_) {
-                if (interp_mats_.find(time) == interp_mats_.end()) { // if time does not exits
-                    const double tau = (Time(time) - time1_).seconds();
+        for (const double &time : meas_times_) {
+            if (interp_mats_.find(time) == interp_mats_.end()) { // if time does not exits
+                const double tau = (Time(time) - time1_).seconds();
 
-                    Eigen::Matrix4d omega = Eigen::Matrix4d::Zero();
-                    Eigen::Matrix4d lambda = Eigen::Matrix4d::Zero();
-                    const double kappa = knot2_->time().seconds() - time;
-                    const Matrix12d Q_tau = traj::const_vel::getQ(tau, ones);
-                    const Matrix12d Tran_kappa = traj::const_vel::getTran(kappa);
-                    const Matrix12d Tran_tau = traj::const_vel::getTran(tau);
-                    const Matrix12d omega12 = (Q_tau * Tran_kappa.transpose() * Qinv_T_);
-                    const Matrix12d lambda12 = (Tran_tau - omega12 * Tran_T_);
-                    omega(0, 0) = omega12(0, 0);
-                    omega(1, 0) = omega12(6, 0);
-                    omega(0, 1) = omega12(0, 6);
-                    omega(1, 1) = omega12(6, 6);
-                    lambda(0, 0) = lambda12(0, 0);
-                    lambda(1, 0) = lambda12(6, 0);
-                    lambda(0, 1) = lambda12(0, 6);
-                    lambda(1, 1) = lambda12(6, 6);
-                    
-                    interp_mats_.emplace(time, std::make_pair(omega, lambda));
-                }
-            }
-        } else {
-            // Thread-local storage for interpolation matrices
-            using LocalInterpMapType = std::map<double, std::pair<Eigen::Matrix4d, Eigen::Matrix4d>>;
-            tbb::enumerable_thread_specific<LocalInterpMapType> thread_local_interp_maps;
-
-            // --- 1. Parallel Computation into Local Containers ---
-            tbb::parallel_for(tbb::blocked_range<size_t>(0, meas_times_.size()),
-                [&](const tbb::blocked_range<size_t>& range) {
-                    // Get this thread's private map
-                    LocalInterpMapType& local_map = thread_local_interp_maps.local();
-                    for (size_t i = range.begin(); i != range.end(); ++i) {
-                        const double& time = meas_times_[i];
-                        // Skip if already computed (optional, depending on requirements)
-                        if (local_map.find(time) != local_map.end()) continue;              
-                        const double tau = (Time(time) - time1_).seconds();
-                        const double kappa = knot2_->time().seconds() - time;
-                        // Compute matrices
-                        const Matrix12d Q_tau = traj::const_vel::getQ(tau, ones);
-                        const Matrix12d Tran_kappa = traj::const_vel::getTran(kappa);
-                        const Matrix12d Tran_tau = traj::const_vel::getTran(tau);
-                        const Matrix12d omega12 = (Q_tau * Tran_kappa.transpose() * Qinv_T_);
-                        const Matrix12d lambda12 = (Tran_tau - omega12 * Tran_T_);
-                        // Populate 4x4 matrices (only 2x2 submatrix used)
-                        Eigen::Matrix4d omega = Eigen::Matrix4d::Zero();
-                        Eigen::Matrix4d lambda = Eigen::Matrix4d::Zero();
-                        omega(0, 0) = omega12(0, 0); omega(0, 1) = omega12(0, 6);
-                        omega(1, 0) = omega12(6, 0); omega(1, 1) = omega12(6, 6);
-                        lambda(0, 0) = lambda12(0, 0); lambda(0, 1) = lambda12(0, 6);
-                        lambda(1, 0) = lambda12(6, 0); lambda(1, 1) = lambda12(6, 6);
-                        // Anomaly checking
-#ifdef DEBUG
-                        if (!omega.allFinite() || !lambda.allFinite()) {
-                            std::cerr << "[P2PCVSuperCostTerm DEBUG | initialize_interp_matrices_] CRITICAL: Computed interpolation matrices for time " << time << " are non-finite!" << std::endl;
-                        }
-#endif
-                        // Store in thread-local map
-                        local_map.emplace(time, std::make_pair(omega, lambda));
-                    }
-                });
-            // --- 2. Sequential Merge Step ---
-            for (const auto& local_map : thread_local_interp_maps) {
-                interp_mats_.insert(local_map.begin(), local_map.end());
+                Eigen::Matrix4d omega = Eigen::Matrix4d::Zero();
+                Eigen::Matrix4d lambda = Eigen::Matrix4d::Zero();
+                const double kappa = knot2_->time().seconds() - time;
+                const Matrix12d Q_tau = traj::const_vel::getQ(tau, ones);
+                const Matrix12d Tran_kappa = traj::const_vel::getTran(kappa);
+                const Matrix12d Tran_tau = traj::const_vel::getTran(tau);
+                const Matrix12d omega12 = (Q_tau * Tran_kappa.transpose() * Qinv_T_);
+                const Matrix12d lambda12 = (Tran_tau - omega12 * Tran_T_);
+                omega(0, 0) = omega12(0, 0);
+                omega(1, 0) = omega12(6, 0);
+                omega(0, 1) = omega12(0, 6);
+                omega(1, 1) = omega12(6, 6);
+                lambda(0, 0) = lambda12(0, 0);
+                lambda(1, 0) = lambda12(6, 0);
+                lambda(0, 1) = lambda12(0, 6);
+                lambda(1, 1) = lambda12(6, 6);
+                
+                interp_mats_.emplace(time, std::make_pair(omega, lambda));
             }
         }
     }
@@ -280,7 +207,7 @@ namespace finalicp {
                 const Eigen::Matrix<double, 6, 1> xi_i1 = lambda(0, 1) * w1 + omega(0, 0) * xi_21 + omega(0, 1) * J_21_inv_w2;
                 const math::se3::Transformation T_i1(xi_i1);
                 const math::se3::Transformation T_i0 = T_i1 * T1;
-                const Eigen::Matrix4d T_mr = T_i0.inverse().matrix();
+                const Eigen::Matrix4d Tb2m = T_i0.inverse().matrix();
 
                 // Pose interpolation Jacobians
                 Eigen::Matrix<double, 6, 24> interp_jac = Eigen::Matrix<double, 6, 24>::Zero();
@@ -297,10 +224,10 @@ namespace finalicp {
 
                 for (const int &match_idx : bin_indices) {
                     const auto &p2p_match = p2p_matches_.at(match_idx);
-                    const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - T_mr.block<3, 3>(0, 0) * p2p_match.query - T_mr.block<3, 1>(0, 3));
+                    const double raw_error = p2p_match.normal.transpose() * (p2p_match.reference - Tb2m.block<3, 3>(0, 0) * p2p_match.query - Tb2m.block<3, 1>(0, 3));
                     const double sqrt_w = sqrt(p2p_loss_func_->weight(fabs(raw_error)));
                     error += sqrt_w * sqrt_rinv * raw_error;
-                    Gmeas += sqrt_w * sqrt_rinv * p2p_match.normal.transpose() * (T_mr * math::se3::point2fs(p2p_match.query)).block<3, 6>(0, 0);
+                    Gmeas += sqrt_w * sqrt_rinv * p2p_match.normal.transpose() * (Tb2m * math::se3::point2fs(p2p_match.query)).block<3, 6>(0, 0);
                 }
 
                 const Eigen::Matrix<double, 1, 24> G = Gmeas * interp_jac;
@@ -335,14 +262,11 @@ namespace finalicp {
 
         // Determine active variables and extract keys
         std::vector<bool> active;
-        active.push_back(knot1_->pose()->active());
-        active.push_back(knot1_->velocity()->active());
-        active.push_back(knot2_->pose()->active());
-        active.push_back(knot2_->velocity()->active());
+        
 
         std::vector<StateKey> keys;
 
-        if (active[0]) {
+        {
             const auto T1node = std::static_pointer_cast<Node<PoseType>>(T1_);
             Jacobians jacs;
             Eigen::Matrix<double, 1, 1> lhs = Eigen::Matrix<double, 1, 1>::Zero();
@@ -352,10 +276,9 @@ namespace finalicp {
             for (auto it = jacmap.begin(); it != jacmap.end(); it++) {
                 keys.push_back(it->first);
             }
-        } else {
-            keys.push_back(-1);
         }
-        if (active[1]) {
+
+        {
             const auto w1node = std::static_pointer_cast<Node<VelType>>(w1_);
             Jacobians jacs;
             Eigen::Matrix<double, 1, 1> lhs = Eigen::Matrix<double, 1, 1>::Zero();
@@ -365,10 +288,9 @@ namespace finalicp {
             for (auto it = jacmap.begin(); it != jacmap.end(); it++) {
                 keys.push_back(it->first);
             }
-        } else {
-            keys.push_back(-1);
-        }
-        if (active[2]) {
+        } 
+
+        {
             const auto T2node = std::static_pointer_cast<Node<PoseType>>(T2_);
             Jacobians jacs;
             Eigen::Matrix<double, 1, 1> lhs = Eigen::Matrix<double, 1, 1>::Zero();
@@ -378,10 +300,9 @@ namespace finalicp {
             for (auto it = jacmap.begin(); it != jacmap.end(); it++) {
                 keys.push_back(it->first);
             }
-        } else {
-            keys.push_back(-1);
-        }
-        if (active[3]) {
+        } 
+
+        {
             const auto w2node = std::static_pointer_cast<Node<VelType>>(w2_);
             Jacobians jacs;
             Eigen::Matrix<double, 1, 1> lhs = Eigen::Matrix<double, 1, 1>::Zero();
@@ -391,9 +312,12 @@ namespace finalicp {
             for (auto it = jacmap.begin(); it != jacmap.end(); it++) {
                 keys.push_back(it->first);
             }
-        } else {
-            keys.push_back(-1);
-        }
+        } 
+
+        active.push_back(knot1_->pose()->active());
+        active.push_back(knot1_->velocity()->active());
+        active.push_back(knot2_->pose()->active());
+        active.push_back(knot2_->velocity()->active());
 
         // Update global Hessian and gradient for active variables
         for (size_t i = 0; i < 4; ++i) {
@@ -402,31 +326,16 @@ namespace finalicp {
                 const auto& key1 = keys[i];
                 unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
 
-                // Debug: Print key, Jacobian size, and block index
-                // ################################
-                // std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", blkIdx1=" << blkIdx1 << std::endl;
-                // ################################
-
                 // Update gradient
                 Eigen::MatrixXd newGradTerm = b.block<6, 1>(i * 6, 0);
 
-                // Debug: Print gradient term size and norm
-                // ################################
-                // std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
-                // ################################
-
-                gradient_vector->mapAt(blkIdx1) += newGradTerm;
+                { gradient_vector->mapAt(blkIdx1) += newGradTerm; }
 
                 // Update Hessian (upper triangle)
                 for (size_t j = i; j < 4; ++j) {
                     if (!active[j]) continue;
                     const auto& key2 = keys[j];
                     unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
-
-                    // Debug: Print inner loop key and block index
-                    // ################################
-                    // std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
-                    // ################################
 
                     unsigned int row, col;
                     const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
@@ -441,16 +350,9 @@ namespace finalicp {
                         }
                     }();
 
-                    // Debug: Print Hessian term size and norm
-                    // ################################
-                    // std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
-                    // ################################
-
                     // Update Hessian with mutex protection
                     BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
-                    // omp_set_lock(&entry.lock);
                     entry.data += newHessianTerm;
-                    // omp_unset_lock(&entry.lock);
                 }
             } catch (const std::exception& e) {
                 std::cerr << "[P2PCVSuperCostTerm | buildGaussNewtonTerms] exception at index " << i << ": " << e.what() << std::endl;
