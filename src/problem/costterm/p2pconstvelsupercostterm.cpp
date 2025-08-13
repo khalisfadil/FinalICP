@@ -117,7 +117,6 @@ namespace finalicp {
         }
       
         meas_times_.clear();
-        meas_times_.reserve(p2p_match_bins_.size());
         for (auto it = p2p_match_bins_.begin(); it != p2p_match_bins_.end(); it++) {
             meas_times_.push_back(it->first);
         }
@@ -156,6 +155,11 @@ namespace finalicp {
                 lambda(1, 1) = lambda12(6, 6);
                 
                 interp_mats_.emplace(time, std::make_pair(omega, lambda));
+#ifdef DEBUG
+                if (!interp_mats_.allFinite()) {
+                    std::cerr << "[P2PCVSuperCostTerm DEBUG | initialize_interp_matrices_ | iter: " << i << "] CRITICAL: Aggregated interp_mats_ is non-finite!" << std::endl;
+                } 
+#endif
             }
         }
     }
@@ -196,7 +200,7 @@ namespace finalicp {
         // Process measurement times: sequential for small sizes, parallel for large
         Matrix24x24 A = Matrix24x24::Zero();
         Vector24 b = Vector24::Zero();
-        for (int i = 0; i < (int)meas_times_.size(); ++i) {
+        for (int i = 0; i < static_cast<int>(meas_times_.size()); ++i) {
             try {
                 const double &ts = meas_times_[i];
                 const std::vector<int> &bin_indices = p2p_match_bins_.at(ts);
@@ -234,19 +238,27 @@ namespace finalicp {
                 A += G.transpose() * G;
                 b -= G.transpose() * error;
 #ifdef DEBUG
+            if (!omega.allFinite()) {
+                std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Aggregated omega is non-finite!" << std::endl;
+            }
+            if (!lambda.allFinite()) {
+                std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Aggregated lambda is non-finite!" << std::endl;
+            }
+            if (!J_i1.allFinite()) {
+                std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Aggregated J_i1 is non-finite!" << std::endl;
+            }  
+            if (!w.allFinite()) {
+                std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Aggregated w is non-finite!" << std::endl;
+            }  
+            if (!Gmeas.allFinite()) {
+                std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Aggregated measurement Jacobian (Gmeas) is non-finite!" << std::endl;
+            } 
             if (!interp_jac.allFinite()) {
                 std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
             }
             if (!Gmeas.allFinite()) {
                 std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Aggregated measurement Jacobian (Gmeas) is non-finite!" << std::endl;
             } 
-            // else {
-            //     std::cout << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] First timestamp bin: interp_jac norm: " << interp_jac.norm() << ", Gmeas norm: " << Gmeas.norm() << std::endl;
-            // }
-            // {
-            //     std::cout << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] Calculated Error: " << error << std::endl;
-            // }
-            
 #endif
             } catch (const std::exception& e) {
                 std::cerr << "[P2PCVSuperCostTerm | buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
