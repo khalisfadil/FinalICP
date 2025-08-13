@@ -270,18 +270,18 @@ namespace finalicp {
                 A += G.transpose() * G;
                 b += (-1) * G.transpose() * error_gyro;
 #ifdef DEBUG
-
                 if (!interp_jac_vel.allFinite()) {
                     std::cerr << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
                 }
                 if (!G.allFinite()) {
                     std::cerr << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Aggregated measurement Jacobian (G) is non-finite!" << std::endl;
-                } else {
-                    std::cout << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] First timestamp bin: interp_jac_vel norm: " << interp_jac_vel.norm() << ", G norm: " << G.norm() << std::endl;
-                }
-                {
-                    std::cout << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] Calculated Error: " << error_gyro << std::endl;
-                }
+                } 
+                // else {
+                //     std::cout << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] First timestamp bin: interp_jac_vel norm: " << interp_jac_vel.norm() << ", G norm: " << G.norm() << std::endl;
+                // }
+                // {
+                //     std::cout << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] Calculated Error: " << error_gyro << std::endl;
+                // }
 #endif
             } catch (const std::exception& e) {
                 std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] exception at timestamp "<< imu_data_vec_[i].timestamp  << ": " << e.what() << std::endl;
@@ -289,6 +289,15 @@ namespace finalicp {
                 std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] exception at timestamp "<< imu_data_vec_[i].timestamp  << ": (unknown)" << std::endl;
             }
         }
+#ifdef DEBUG
+        // --- [IMPROVEMENT] Check the accumulated local system before scattering ---
+        if (!A.allFinite() || !b.allFinite()) {
+            std::cerr << "[GyroSuperCostTerm DEBUG] CRITICAL: Accumulated local Hessian (A) or Gradient (b) is non-finite!" << std::endl;
+        } else {
+             std::cout << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] Accumulated local Hessian norm: " << A.norm() << ", Gradient norm: " << b.norm() << std::endl;
+        }
+#endif
+
 
         // Determine active variables and extract keys
         std::vector<bool> active;

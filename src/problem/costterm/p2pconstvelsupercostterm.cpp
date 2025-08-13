@@ -234,17 +234,19 @@ namespace finalicp {
                 A += G.transpose() * G;
                 b -= G.transpose() * error;
 #ifdef DEBUG
-                if (!interp_jac.allFinite()) {
-                    std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
-                }
-                if (!Gmeas.allFinite()) {
-                    std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Aggregated measurement Jacobian (Gmeas) is non-finite!" << std::endl;
-                } else {
-                    std::cout << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] First timestamp bin: interp_jac norm: " << interp_jac.norm() << ", Gmeas norm: " << Gmeas.norm() << std::endl;
-                }
-                {
-                    std::cout << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] Calculated Error: " << error << std::endl;
-                }
+            if (!interp_jac.allFinite()) {
+                std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
+            }
+            if (!Gmeas.allFinite()) {
+                std::cerr << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] CRITICAL: Aggregated measurement Jacobian (Gmeas) is non-finite!" << std::endl;
+            } 
+            // else {
+            //     std::cout << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] First timestamp bin: interp_jac norm: " << interp_jac.norm() << ", Gmeas norm: " << Gmeas.norm() << std::endl;
+            // }
+            // {
+            //     std::cout << "[P2PCVSuperCostTerm DEBUG | buildGaussNewtonTerms | iter: " << i << "] Calculated Error: " << error << std::endl;
+            // }
+            
 #endif
             } catch (const std::exception& e) {
                 std::cerr << "[P2PCVSuperCostTerm | buildGaussNewtonTerms] exception at timestamp " << meas_times_[i] << ": " << e.what() << std::endl;
