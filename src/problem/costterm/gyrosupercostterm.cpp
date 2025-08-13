@@ -271,7 +271,7 @@ namespace finalicp {
                 b += (-1) * G.transpose() * error_gyro;
 #ifdef DEBUG
 
-                if (!interp_jac.allFinite()) {
+                if (!interp_jac_vel.allFinite()) {
                     std::cerr << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
                 }
                 if (!G.allFinite()) {
