@@ -189,6 +189,7 @@ namespace finalicp {
 
             for (size_t i = range.begin(); i != range.end(); ++i) {
                 const double &time = meas_times_[i];
+                if (local_map.find(time) != local_map.end()) continue;      
 
                 // Get Lambda, Omega for this time
                 const double tau = time - time1_.seconds();
@@ -217,7 +218,7 @@ namespace finalicp {
                 }
     #endif
                 // Write to the thread-local map. This is safe because no other thread can access it.
-                local_map.insert({time, {omega, lambda}});
+                local_map.emplace(time, std::make_pair(omega, lambda));
             }
         });
 
@@ -225,7 +226,6 @@ namespace finalicp {
         // This part runs only on the main thread after all parallel work is complete.
         interp_mats_.clear();
         for (const auto& local_map : thread_local_interp_maps) {
-            // 'insert' is an efficient way to merge maps.
             interp_mats_.insert(local_map.begin(), local_map.end());
         }
     }

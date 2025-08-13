@@ -4,6 +4,10 @@
 
 namespace finalicp {
 
+    // ##########################################
+    // cost
+    // ##########################################
+
     GyroSuperCostTerm::Ptr GyroSuperCostTerm::MakeShared(
         const Interface::ConstPtr &interface, const Time time1, const Time time2,
         const Evaluable<BiasType>::ConstPtr &bias1,
@@ -11,6 +15,9 @@ namespace finalicp {
         return std::make_shared<GyroSuperCostTerm>(interface, time1, time2, bias1,bias2, options);
     }
 
+    // ##########################################
+    // cost
+    // ##########################################
 
     double GyroSuperCostTerm::cost() const {
 
@@ -39,7 +46,12 @@ namespace finalicp {
 
         // Sequential processing for small imu_data_vec_ to avoid parallel overhead
         double cost = 0;
-        for (int i = 0; i < (int)imu_data_vec_.size(); ++i) {
+
+#ifdef DEBUG
+        std::cout << "[GyroSuperCostTerm DEBUG | cost] Calculating cost for " << imu_data_vec_.size() << " IMU measurements..." << std::endl;
+#endif
+
+        for (int i = 0; i < static_cast<int>(imu_data_vec_.size()); ++i) {
             try {
                 const double &ts = imu_data_vec_[i].timestamp;
                 const IMUData &imu_data = imu_data_vec_[i];
@@ -72,15 +84,36 @@ namespace finalicp {
                 // Evaluate cost
                 double cost_i = gyro_loss_func_->cost(gyro_noise_model_->getWhitenedErrorNorm(raw_error_gyro));
                 if (!std::isnan(cost_i)) { cost += cost_i; }
+#ifdef DEBUG
+                if (i == 0) {
+                    std::cout << "[GyroSuperCostTerm DEBUG | cost] First IMU data point (t=" << std::fixed << std::setprecision(4) << ts << "):" << std::endl;
+                    if (!w_i.allFinite()) {
+                        std::cerr << "[GyroSuperCostTerm DEBUG | cost] CRITICAL: Interpolated state (vel/accel) is non-finite!" << std::endl;
+                    } else {
+                        std::cout << "[GyroSuperCostTerm DEBUG | cost] Interp Vel norm: " << w_i.norm() << std::endl;
+                        std::cout << "[GyroSuperCostTerm DEBUG | cost] Interp Bias norm:  " << bias_i.norm() << std::endl;
+                    }
+
+                    if (!raw_error_gyro.allFinite()) {
+                        std::cerr << "[GyroSuperCostTerm DEBUG | cost] CRITICAL: Raw IMU error is non-finite!" << std::endl;
+                    } else {
+                        std::cout << "[GyroSuperCostTerm DEBUG | cost] Raw Gyro Error norm:  " << raw_error_gyro.norm() << std::endl;
+                    }
+                }
+#endif
 
             } catch (const std::exception& e) {
-                std::cerr << "[GyroSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
+                std::cerr << "[GyroSuperCostTerm | cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": " << e.what() << std::endl;
             } catch (...) {
-                std::cerr << "[GyroSuperCostTerm::cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
+                std::cerr << "[GyroSuperCostTerm | cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
             }
         }
         return cost;
     }
+
+    // ##########################################
+    // cost
+    // ##########################################
 
     void GyroSuperCostTerm::getRelatedVarKeys(KeySet &keys) const {
         knot1_->pose()->getRelatedVarKeys(keys);
@@ -91,39 +124,58 @@ namespace finalicp {
         bias2_->getRelatedVarKeys(keys);
     }
 
+    // ##########################################
+    // cost
+    // ##########################################
+
     void GyroSuperCostTerm::init() { initialize_interp_matrices_(); }
 
+    // ##########################################
+    // cost
+    // ##########################################
+
     void GyroSuperCostTerm::initialize_interp_matrices_() {
+#ifdef DEBUG
+        std::cout << "[GyroSuperCostTerm DEBUG | initialize_interp_matrices_] Initializing interpolation matrices for imu_data_vec_ " << imu_data_vec_.size() << " timestamps." << std::endl;
+#endif
         const Eigen::Matrix<double, 6, 1> ones = Eigen::Matrix<double, 6, 1>::Ones();
 
         for (const IMUData &imu_data : imu_data_vec_) {
             const auto time = imu_data.timestamp;
             if (interp_mats_.find(time) == interp_mats_.end()) {
-            const double tau = (Time(time) - time1_).seconds();
+                const double tau = (Time(time) - time1_).seconds();
 
-            Eigen::Matrix4d omega = Eigen::Matrix4d::Zero();
+                Eigen::Matrix4d omega = Eigen::Matrix4d::Zero();
+                Eigen::Matrix4d lambda = Eigen::Matrix4d::Zero();
 
-            Eigen::Matrix4d lambda = Eigen::Matrix4d::Zero();
-
-            const double kappa = knot2_->time().seconds() - time;
-            const Matrix12d Q_tau = traj::const_vel::getQ(tau, ones);
-            const Matrix12d Tran_kappa = traj::const_vel::getTran(kappa);
-            const Matrix12d Tran_tau = traj::const_vel::getTran(tau);
-            const Matrix12d omega12 = (Q_tau * Tran_kappa.transpose() * Qinv_T_);
-            const Matrix12d lambda12 = (Tran_tau - omega12 * Tran_T_);
-            omega(0, 0) = omega12(0, 0);
-            omega(1, 0) = omega12(6, 0);
-            omega(0, 1) = omega12(0, 6);
-            omega(1, 1) = omega12(6, 6);
-            lambda(0, 0) = lambda12(0, 0);
-            lambda(1, 0) = lambda12(6, 0);
-            lambda(0, 1) = lambda12(0, 6);
-            lambda(1, 1) = lambda12(6, 6);
-            
-            interp_mats_.emplace(time, std::make_pair(omega, lambda));
+                const double kappa = knot2_->time().seconds() - time;
+                const Matrix12d Q_tau = traj::const_vel::getQ(tau, ones);
+                const Matrix12d Tran_kappa = traj::const_vel::getTran(kappa);
+                const Matrix12d Tran_tau = traj::const_vel::getTran(tau);
+                const Matrix12d omega12 = (Q_tau * Tran_kappa.transpose() * Qinv_T_);
+                const Matrix12d lambda12 = (Tran_tau - omega12 * Tran_T_);
+                omega(0, 0) = omega12(0, 0);
+                omega(1, 0) = omega12(6, 0);
+                omega(0, 1) = omega12(0, 6);
+                omega(1, 1) = omega12(6, 6);
+                lambda(0, 0) = lambda12(0, 0);
+                lambda(1, 0) = lambda12(6, 0);
+                lambda(0, 1) = lambda12(0, 6);
+                lambda(1, 1) = lambda12(6, 6);
+#ifdef DEBUG
+            // --- [IMPROVEMENT] Sanity-check the computed matrices ---
+            if (!omega.allFinite() || !lambda.allFinite()) {
+                    std::cerr << "[GyroSuperCostTerm DEBUG | initialize_interp_matrices_] CRITICAL: Computed interpolation matrices for time " << time << " are non-finite!" << std::endl;
+            }
+#endif
+                interp_mats_.emplace(time, std::make_pair(omega, lambda));
             }
         }
     }
+
+    // ##########################################
+    // cost
+    // ##########################################
 
     void GyroSuperCostTerm::buildGaussNewtonTerms(const StateVector& state_vec, BlockSparseMatrix* approximate_hessian, BlockVector* gradient_vector) const {
 

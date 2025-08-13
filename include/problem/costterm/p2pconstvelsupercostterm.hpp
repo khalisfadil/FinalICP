@@ -111,5 +111,6 @@ namespace finalicp {
             std::vector<double> meas_times_;                                                    //Stores measurement timestamps for IMU readings.
             BaseLossFunc::Ptr p2p_loss_func_ = L2LossFunc::MakeShared();
             void initialize_interp_matrices_();                                                 //Initializes precomputed interpolation matrices.
-    };
+            size_t sequential_threshold_ = 1000;
+        };
 }  // namespace finalicp

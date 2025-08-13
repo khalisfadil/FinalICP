@@ -15,9 +15,17 @@ namespace finalicp {
     namespace traj {
         namespace const_vel {
 
+            // ###########################################################
+            // backward
+            // ###########################################################
+
             auto Interface::MakeShared(const Eigen::Matrix<double, 6, 1>& Qc_diag) -> Ptr {
                 return std::make_shared<Interface>(Qc_diag);
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             Interface::Interface(const Eigen::Matrix<double, 6, 1>& Qc_diag)
                 : Qc_diag_(Qc_diag) {}
@@ -29,9 +37,17 @@ namespace finalicp {
                 knot_map_.insert(knot_map_.end(), std::pair<Time, Variable::Ptr>(time, knot));
             }
 
+            // ###########################################################
+            // backward
+            // ###########################################################
+
             Variable::ConstPtr Interface::get(const Time time) const {
                 return knot_map_.at(time);
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             auto Interface::getPoseInterpolator(const Time time) const -> Evaluable<PoseType>::ConstPtr {
                 // Check that map is not empty
@@ -71,6 +87,10 @@ namespace finalicp {
                 return PoseInterpolator::MakeShared(time, it1->second, it2->second);
             }
 
+            // ###########################################################
+            // backward
+            // ###########################################################
+
             auto Interface::getVelocityInterpolator(const Time time) const -> Evaluable<VelocityType>::ConstPtr {
                 // Check that map is not empty
                 if (knot_map_.empty()) throw std::runtime_error("knot map is empty");
@@ -107,6 +127,10 @@ namespace finalicp {
                 // Create interpolated evaluator
                 return VelocityInterpolator::MakeShared(time, it1->second, it2->second);
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             auto Interface::getCovariance(const Covariance& cov, const Time time) -> CovType {
                 // clang-format off
@@ -308,6 +332,10 @@ namespace finalicp {
                 // clang-format on
             }
 
+            // ###########################################################
+            // backward
+            // ###########################################################
+
             void Interface::addPosePrior(const Time time, const PoseType& T_k0, const Eigen::Matrix<double, 6, 6>& cov) {
                 if (state_prior_factor_ != nullptr)
                 throw std::runtime_error("a state prior already exists.");
@@ -338,6 +366,10 @@ namespace finalicp {
                 // Create cost term
                 pose_prior_factor_ = WeightedLeastSqCostTerm<6>::MakeShared(error_func, noise_model, loss_func);
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             void Interface::addVelocityPrior(const Time time, const VelocityType& w_0k_ink, const Eigen::Matrix<double, 6, 6>& cov) {
                 // Only allow adding 1 prior
@@ -371,6 +403,10 @@ namespace finalicp {
                 vel_prior_factor_ = WeightedLeastSqCostTerm<6>::MakeShared(error_func, noise_model, loss_func);
             }
 
+            // ###########################################################
+            // backward
+            // ###########################################################
+
             void Interface::addStatePrior(const Time time, const PoseType& T_k0, const VelocityType& w_0k_ink, const CovType& cov) {
                 // Only allow adding 1 prior
                 if ((pose_prior_factor_ != nullptr) || (vel_prior_factor_ != nullptr))
@@ -403,6 +439,10 @@ namespace finalicp {
                 // Create cost term
                 state_prior_factor_ = WeightedLeastSqCostTerm<12>::MakeShared(error_func, noise_model, loss_func);
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             void Interface::addPriorCostTerms(Problem& problem) const {
                 // If empty, return none

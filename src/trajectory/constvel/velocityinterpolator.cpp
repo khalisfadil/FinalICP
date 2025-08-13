@@ -11,9 +11,17 @@ namespace finalicp {
     namespace traj {
         namespace const_vel {
 
+            // ###########################################################
+            // backward
+            // ###########################################################
+
             VelocityInterpolator::Ptr VelocityInterpolator::MakeShared(const Time time, const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) {
                 return std::make_shared<VelocityInterpolator>(time, knot1, knot2);
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             VelocityInterpolator::VelocityInterpolator(const Time time, const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2)
                     : knot1_(knot1), knot2_(knot2) {
@@ -54,9 +62,17 @@ namespace finalicp {
                 // lambda22_ = 1.0 - T * psi21_ - psi22_;
             }
 
+            // ###########################################################
+            // backward
+            // ###########################################################
+
             bool VelocityInterpolator::active() const {
                 return knot1_->pose()->active() || knot1_->velocity()->active() || knot2_->pose()->active() || knot2_->velocity()->active();
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             void VelocityInterpolator::getRelatedVarKeys(KeySet& keys) const {
                 knot1_->pose()->getRelatedVarKeys(keys);
@@ -64,6 +80,10 @@ namespace finalicp {
                 knot2_->pose()->getRelatedVarKeys(keys);
                 knot2_->velocity()->getRelatedVarKeys(keys);
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             auto VelocityInterpolator::value() const -> OutType {
                 const auto T1 = knot1_->pose()->value();
@@ -82,6 +102,10 @@ namespace finalicp {
                 OutType xi_it = J_i1 * xi_j1;
                 return xi_it;
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             auto VelocityInterpolator::forward() const -> Node<OutType>::Ptr {
                 const auto T1 = knot1_->pose()->forward();
@@ -105,6 +129,10 @@ namespace finalicp {
                 node->addChild(w2);
                 return node;
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             void VelocityInterpolator::backward(const Eigen::MatrixXd& lhs, const Node<OutType>::Ptr& node, Jacobians& jacs) const {
                 if (!active()) return;

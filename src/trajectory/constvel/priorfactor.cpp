@@ -10,16 +10,32 @@ namespace finalicp {
     namespace traj {
         namespace const_vel {
 
+            // ###########################################################
+            // backward
+            // ###########################################################
+
             auto PriorFactor::MakeShared(const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2) -> Ptr {
                 return std::make_shared<PriorFactor>(knot1, knot2);
             }
 
+            // ###########################################################
+            // backward
+            // ###########################################################
+
             PriorFactor::PriorFactor(const Variable::ConstPtr& knot1, const Variable::ConstPtr& knot2)
                 : knot1_(knot1), knot2_(knot2) {}
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             bool PriorFactor::active() const {
                 return knot1_->pose()->active() || knot1_->velocity()->active() || knot2_->pose()->active() || knot2_->velocity()->active();
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             void PriorFactor::getRelatedVarKeys(KeySet& keys) const {
                 knot1_->pose()->getRelatedVarKeys(keys);
@@ -27,6 +43,10 @@ namespace finalicp {
                 knot2_->pose()->getRelatedVarKeys(keys);
                 knot2_->velocity()->getRelatedVarKeys(keys);
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             auto PriorFactor::value() const -> OutType {
                 OutType error = OutType::Zero();
@@ -42,6 +62,10 @@ namespace finalicp {
                 error.block<6, 1>(6, 0) = math::se3::vec2jacinv(xi_21) * w2 - w1;
                 return error;
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             auto PriorFactor::forward() const -> Node<OutType>::Ptr {
                 const auto T1 = knot1_->pose()->forward();
@@ -62,6 +86,10 @@ namespace finalicp {
                 node->addChild(w2);
                 return node;
             }
+
+            // ###########################################################
+            // backward
+            // ###########################################################
 
             void PriorFactor::backward(const Eigen::MatrixXd& lhs, const Node<OutType>::Ptr& node, Jacobians& jacs) const {
                 // e \approx ebar + JAC * delta_x
