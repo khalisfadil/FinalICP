@@ -45,11 +45,6 @@ namespace finalicp {
                 lambda12_ = tau - T * psi11_ - psi12_;
                 lambda21_ = -psi21_;
                 lambda22_ = 1.0 - T * psi21_ - psi22_;
-#ifdef DEBUG
-                if (!lambda22_.allFinite() || !lambda21_.allFinite()) {
-                    std::cerr << "[CONSTVEL DEBUG | PoseInterpolator] CRITICAL: Final interpolation matrices lambda contain non-finite values!" << std::endl;
-                }
-#endif
             }
 
             // ###########################################################
