@@ -66,12 +66,14 @@ namespace finalicp {
 
                 // Interpolated bias
                 Eigen::Matrix<double, 6, 1> bias_i = Eigen::Matrix<double, 6, 1>::Zero();
-                const double tau = ts - knot1_->time().seconds();
-                const double T = knot2_->time().seconds() - knot1_->time().seconds();
-                const double ratio = tau / T;
-                const double omega_ = ratio;
-                const double lambda_ = 1 - ratio;
-                bias_i = lambda_ * b1 + omega_ * b2;
+                {
+                    const double tau = ts - knot1_->time().seconds();
+                    const double T = knot2_->time().seconds() - knot1_->time().seconds();
+                    const double ratio = tau / T;
+                    const double omega_ = ratio;
+                    const double lambda_ = 1 - ratio;
+                    bias_i = lambda_ * b1 + omega_ * b2;
+                }
 
                 // Compute gyroscope error
                 Eigen::Matrix<double, 3, 1> raw_error_gyro = Eigen::Matrix<double, 3, 1>::Zero();
@@ -88,7 +90,7 @@ namespace finalicp {
                 if (i == 0) {
                     std::cout << "[GyroSuperCostTerm DEBUG | cost] First IMU data point (t=" << std::fixed << std::setprecision(4) << ts << "):" << std::endl;
                     if (!w_i.allFinite()) {
-                        std::cerr << "[GyroSuperCostTerm DEBUG | cost] CRITICAL: Interpolated state (vel/accel) is non-finite!" << std::endl;
+                        std::cerr << "[GyroSuperCostTerm DEBUG | cost] CRITICAL: Interpolated state vel is non-finite!" << std::endl;
                     } else {
                         std::cout << "[GyroSuperCostTerm DEBUG | cost] Interp Vel norm: " << w_i.norm() << std::endl;
                         std::cout << "[GyroSuperCostTerm DEBUG | cost] Interp Bias norm:  " << bias_i.norm() << std::endl;
@@ -108,6 +110,9 @@ namespace finalicp {
                 std::cerr << "[GyroSuperCostTerm | cost] exception at timestamp " << imu_data_vec_[i].timestamp << ": (unknown)" << std::endl;
             }
         }
+#ifdef DEBUG
+        std::cout << "[GyroSuperCostTerm DEBUG | cost] Total gyro super cost contribution: " << cost << std::endl;
+#endif
         return cost;
     }
 
@@ -264,6 +269,18 @@ namespace finalicp {
                 // Accumulate contributions
                 A += G.transpose() * G;
                 b += (-1) * G.transpose() * error_gyro;
+#ifdef DEBUG
+                if (i == 0) {
+                    if (!interp_jac.allFinite()) {
+                        std::cerr << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Pose interpolation Jacobian (interp_jac) is non-finite!" << std::endl;
+                    }
+                    if (!G.allFinite()) {
+                        std::cerr << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] CRITICAL: Aggregated measurement Jacobian (G) is non-finite!" << std::endl;
+                    } else {
+                        std::cout << "[GyroSuperCostTerm DEBUG | buildGaussNewtonTerms] First timestamp bin: interp_jac norm: " << interp_jac.norm() << ", Gmeas norm: " << Gmeas.norm() << std::endl;
+                    }
+                }
+#endif
             } catch (const std::exception& e) {
                 std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] exception at timestamp "<< imu_data_vec_[i].timestamp  << ": " << e.what() << std::endl;
             } catch (...) {
@@ -369,31 +386,16 @@ namespace finalicp {
                 const auto& key1 = keys[i];
                 unsigned int blkIdx1 = state_vec.getStateBlockIndex(key1);
 
-                // Debug: Print key, Jacobian size, and block index
-                // ################################
-                // std::cout << "[DEBUG] i=" << i << ", key1=" << key1 << ", blkIdx1=" << blkIdx1 << std::endl;
-                // ################################
-
                 // Update gradient
                 Eigen::MatrixXd newGradTerm = b.block<6, 1>(i * 6, 0);
 
-                // Debug: Print gradient term size and norm
-                // ################################
-                // std::cout << "[DEBUG] Gradient term size: (" << newGradTerm.rows() << ", " << newGradTerm.cols() << "), norm: " << newGradTerm.norm() << std::endl;
-                // ################################
-
-                gradient_vector->mapAt(blkIdx1) += newGradTerm;
+                { gradient_vector->mapAt(blkIdx1) += newGradTerm; }
 
                 // Update Hessian (upper triangle)
                 for (size_t j = i; j < 6; ++j) {
                     if (!active[j]) continue;
                     const auto& key2 = keys[j];
                     unsigned int blkIdx2 = state_vec.getStateBlockIndex(key2);
-
-                    // Debug: Print inner loop key and block index
-                    // ################################
-                    // std::cout << "[DEBUG] j=" << j << ", key2=" << key2 << ", blkIdx2=" << blkIdx2 << std::endl;
-                    // ################################
 
                     unsigned int row, col;
                     const Eigen::MatrixXd newHessianTerm = [&]() -> Eigen::MatrixXd {
@@ -408,16 +410,10 @@ namespace finalicp {
                         }
                     }();
 
-                    // Debug: Print Hessian term size and norm
-                    // ################################
-                    // std::cout << "[DEBUG] Hessian term (row=" << row << ", col=" << col << ") size: (" << newHessianTerm.rows() << ", " << newHessianTerm.cols() << "), norm: " << newHessianTerm.norm() << std::endl;
-                    // ################################
-
                     // Update Hessian with mutex protection
                     BlockSparseMatrix::BlockRowEntry& entry = approximate_hessian->rowEntryAt(row, col, true);
-                    // omp_set_lock(&entry.lock);
                     entry.data += newHessianTerm;
-                    // omp_unset_lock(&entry.lock);
+
                 }
             } catch (const std::exception& e) {
                 std::cerr << "[GyroSuperCostTerm::buildGaussNewtonTerms] exception at index " << i << ": " << e.what() << std::endl;

@@ -80,7 +80,7 @@ namespace finalicp {
             }
         }
 #ifdef DEBUG
-        std::cout << "[P2PCVSuperCostTerm DEBUG | cost] Total P2P cost contribution: " << cost << std::endl;
+        std::cout << "[P2PCVSuperCostTerm DEBUG | cost] Total p2p super cost contribution: " << cost << std::endl;
 #endif
         return cost;
     }
