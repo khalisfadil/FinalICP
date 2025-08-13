@@ -58,11 +58,6 @@ namespace finalicp {
                 const math::se3::Transformation T_i1(Eigen::Matrix<double, 6, 1>(
                 Phi_.block<6, 6>(0, 6) * knot_->velocity()->value()));
                 return OutType(T_i1 * knot_->pose()->value());
-#ifdef DEBUG
-                if (!T_i0.matrix().allFinite()) {
-                    std::cerr << "[CONSTVEL DEBUG | PoseExtrapolator | value] CRITICAL: Output extrapolated pose is non-finite!" << std::endl;
-                }
-#endif
             }
 
             // ###########################################################

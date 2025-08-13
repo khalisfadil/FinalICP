@@ -63,9 +63,6 @@ namespace finalicp {
 #ifdef DEBUG
                     // Log details for the very first point-to-plane match only to avoid spam
                     if (i == 0 && match_idx == bin_indices[0]) {
-                        if (!Tb2m.allFinite()) {
-                            std::cerr << "[P2PCVSuperCostTerm DEBUG | cost] CRITICAL: Interpolated pose Tb2m is non-finite!" << std::endl;
-                        }
                         if (!std::isfinite(raw_error)) {
                              std::cerr << "[P2PCVSuperCostTerm DEBUG | cost] CRITICAL: Raw P2P error is non-finite!" << std::endl;
                         } else {
