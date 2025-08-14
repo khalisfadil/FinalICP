@@ -107,13 +107,13 @@ namespace finalicp {
         bool matches_are_finite = true;
         for (size_t i = 0; i < p2p_matches_.size(); ++i) {
             if (!p2p_matches_[i].reference.allFinite() || !p2p_matches_[i].normal.allFinite() || !p2p_matches_[i].query.allFinite()) {
-                std::cout << "[P2PCVSuperCostTerm | initP2PMatches | ts " << indep2p_matches_[i].timestamp << "] " << "CRITICAL: p2p_matches_ " << i << " is NOT finite before association!" << std::endl;
+                std::cout << "[P2PCVSuperCostTerm | initP2PMatches | ts " << p2p_matches_[i].timestamp << "] " << "CRITICAL: p2p_matches_ " << i << " is NOT finite before association!" << std::endl;
                 matches_are_finite = false;
                 break;
             }
         }
         if (matches_are_finite) {
-            std::cout << "[ICP DEBUG | Frame " << index_frame << "] " << "All p2p_matches_ are finite before association." << std::endl;
+            std::cout << "[P2PCVSuperCostTerm | initP2PMatches ] " << "All p2p_matches_ are finite before association." << std::endl;
         }
 #endif
         p2p_match_bins_.clear();

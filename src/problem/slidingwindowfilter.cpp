@@ -280,7 +280,7 @@ namespace finalicp {
             Eigen::SparseMatrix<double> &approximate_hessian,
             Eigen::VectorXd &gradient_vector) const {
 #ifdef DEBUG
-        std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] buildGaussNewtonTerms called for the active window with cost_term_ size: " << cost_term_.size() << std::endl;
+        std::cout << "[SlidingWindowFilter DEBUG | buildGaussNewtonTerms] buildGaussNewtonTerms called for the active window with cost_terms_ size: " << cost_terms_.size() << std::endl;
 #endif
         //
         std::vector<unsigned int> sqSizes = state_vector_->getStateBlockSizes();
