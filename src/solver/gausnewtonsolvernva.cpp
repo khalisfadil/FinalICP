@@ -43,13 +43,14 @@ namespace finalicp {
 
 #ifdef DEBUG
     // --- [KEY DEBUG] CHECK THE HEALTH OF THE LINEAR SYSTEM ---
-    std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] Built system. Grad norm: " << grad_norm << ". Hessian non-zeros: " << approximate_hessian.nonZeros() << std::endl;
+    std::cout << "\n[000# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate]  ###################### START ####################. \n" << std::endl;
+    std::cout << "[001# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate] Built system. Grad norm: " << grad_norm << ". Hessian non-zeros: " << approximate_hessian.nonZeros() << std::endl;
     if (!gradient_vector.allFinite()) {
-        std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Gradient vector contains non-finite values!" << std::endl;
+        std::cout << "[002# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Gradient vector contains non-finite values!" << std::endl;
         return false; // Abort this iteration
     }
     if (!approximate_hessian.coeffs().allFinite()) {
-        std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Hessian matrix contains non-finite values!" << std::endl;
+        std::cout << "[003# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Hessian matrix contains non-finite values!" << std::endl;
         return false; // Abort this iteration
     }
 #endif
@@ -62,9 +63,9 @@ namespace finalicp {
 #ifdef DEBUG
     // --- [KEY DEBUG] CHECK THE HEALTH OF THE SOLUTION (THE STATE UPDATE) ---
     double perturbation_norm = perturbation.norm();
-    std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] Solved system. Perturbation norm: " << perturbation_norm << std::endl;
+    std::cout << "[004# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate] Solved system. Perturbation norm: " << perturbation_norm << std::endl;
     if (!perturbation.allFinite()) {
-        std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Perturbation (state update) is non-finite! System solve failed." << std::endl;
+        std::cout << "[005# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Perturbation (state update) is non-finite! System solve failed." << std::endl;
         return false; // Abort this iteration
     }
 #endif
@@ -74,7 +75,7 @@ namespace finalicp {
             if (expected_delta_cost < 0.0) {
                 throw std::runtime_error("Expected delta cost must be >= 0.0");
 #ifdef DEBUG
-                std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Expected delta cost is negative (" << expected_delta_cost << "). The descent direction is invalid." << std::endl;
+                std::cout << "[006# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate] CRITICAL: Expected delta cost is negative (" << expected_delta_cost << "). The descent direction is invalid." << std::endl;
 #endif
             }
             if (expected_delta_cost < 1.0e-5 || fabs(expected_delta_cost / cost) < 1.0e-7) {
@@ -88,7 +89,7 @@ namespace finalicp {
                     cost = proposeUpdate(alpha * perturbation);
                     update_time += timer.milliseconds();
 #ifdef DEBUG
-                    std::cout << "[GNSNVA DEBUG | linearizeSolveAndUpdate] Line search it: " << j << " prev_cost: " << prev_cost_ << " new_cost: " << cost << " alpha: " << alpha << std::endl;
+                    std::cout << "[007# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate] Line search it: " << j << " prev_cost: " << prev_cost_ << " new_cost: " << cost << " alpha: " << alpha << std::endl;
 #endif
                     if (cost <= prev_cost_) {
                         acceptProposedState();
@@ -110,18 +111,17 @@ namespace finalicp {
 
 #ifdef DEBUG
         // Print report line if verbose option enabled
-        if (curr_iteration_ == 1) {
-            // clang-format off
-            std::cout << "[GNSNVA DEBUG] Report: " << std::endl;
-            std::cout << std::right << std::setw( 15) << std::setfill(' ') << "iter"
-                        << std::right << std::setw(15) << std::setfill(' ') << "cost"
-                        << std::right << std::setw(15) << std::setfill(' ') << "build (ms)"
-                        << std::right << std::setw(15) << std::setfill(' ') << "solve (ms)"
-                        << std::right << std::setw(15) << std::setfill(' ') << "update (ms)"
-                        << std::right << std::setw(15) << std::setfill(' ') << "time (ms)"
-                        << std::endl;
-            // clang-format on
-        }
+        // clang-format off
+        std::cout << "[008# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate] Start Report: " << std::endl;
+        std::cout << std::right << std::setw( 15) << std::setfill(' ') << "iter"
+                    << std::right << std::setw(15) << std::setfill(' ') << "cost"
+                    << std::right << std::setw(15) << std::setfill(' ') << "build (ms)"
+                    << std::right << std::setw(15) << std::setfill(' ') << "solve (ms)"
+                    << std::right << std::setw(15) << std::setfill(' ') << "update (ms)"
+                    << std::right << std::setw(15) << std::setfill(' ') << "time (ms)"
+                    << std::endl;
+        // clang-format on
+        
         // clang-format off
         std::cout << std::right << std::setw( 15) << std::setfill(' ') << curr_iteration_
                 << std::right << std::setw(15) << std::setfill(' ') << std::setprecision(5) << cost
@@ -130,7 +130,8 @@ namespace finalicp {
                 << std::right << std::setw(15) << std::setfill(' ') << std::setprecision(3) << std::fixed << update_time << std::resetiosflags(std::ios::fixed)
                 << std::right << std::setw(15) << std::setfill(' ') << std::setprecision(3) << std::fixed << iter_timer.milliseconds() << std::resetiosflags(std::ios::fixed)
                 << std::endl;
-        std::cout << "[GNSNVA DEBUG] End report. " << std::endl;
+        std::cout << "[009# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate] End report." << std::endl;
+        std::cout << "\n[000# GaussNewtonSolverNVA DEBUG | linearizeSolveAndUpdate]  ###################### END ####################. \n" << std::endl;
         // clang-format on
         
 #endif
@@ -147,11 +148,12 @@ namespace finalicp {
 #ifdef DEBUG
         // --- [PRE-SOLVE DIAGNOSTICS] ---
         // Check for obvious problems in the Hessian before attempting to solve.
+        std::cout << "\n[000# GaussNewtonSolverNVA DEBUG | solveGaussNewton]  ###################### START ####################. \n" << std::endl;
         bool hessian_ok = true;
         for (int k = 0; k < approximate_hessian.outerSize(); ++k) {
             for (Eigen::SparseMatrix<double>::InnerIterator it(approximate_hessian, k); it; ++it) {
                 if (!std::isfinite(it.value())) {
-                    std::cerr << "[GNSNVA DEBUG] CRITICAL: Hessian contains non-finite value at (" 
+                    std::cerr << "[001# GaussNewtonSolverNVA DEBUG | solveGaussNewton] CRITICAL: Hessian contains non-finite value at (" 
                             << it.row() << ", " << it.col() << ")!" << std::endl;
                     hessian_ok = false;
                     break;
@@ -162,7 +164,7 @@ namespace finalicp {
 
         for (int i = 0; i < approximate_hessian.rows(); ++i) {
             if (approximate_hessian.coeff(i, i) <= 0) {
-                std::cerr << "[GNSNVA DEBUG] WARNING: Hessian has a non-positive diagonal at index "
+                std::cerr << "[002# GaussNewtonSolverNVA DEBUG | solveGaussNewton] WARNING: Hessian has a non-positive diagonal at index "
                         << i << " (value: " << approximate_hessian.coeff(i, i) 
                         << "). This will cause Cholesky decomposition to fail." << std::endl;
                 hessian_ok = false;
@@ -186,8 +188,7 @@ namespace finalicp {
 
         // --- [FACTORIZATION SANITY CHECK] ---
         if (hessian_solver_->info() != Eigen::Success) {
-            std::string error_msg = "Eigen LLT decomposition failed. ";
-#ifdef DEBUG
+            std::string error_msg = "[GaussNewtonSolverNVA DEBUG | solveGaussNewton] Eigen LLT decomposition failed. ";
             // Provide a more detailed error message in debug builds
             switch(hessian_solver_->info()) {
                 case Eigen::NumericalIssue:
@@ -203,7 +204,7 @@ namespace finalicp {
                     error_msg += "Reason: Unknown.";
                     break;
             }
-#endif
+
             throw decomp_failure(error_msg);
         }
 
@@ -213,10 +214,11 @@ namespace finalicp {
 #ifdef DEBUG
         // After solving, check the result. A non-finite or huge perturbation is a major red flag.
         if (!perturbation.allFinite()) {
-            std::cerr << "[GNSNVA DEBUG] CRITICAL: The calculated perturbation vector contains non-finite values! The system is likely ill-conditioned." << std::endl;
+            std::cerr << "[003# GaussNewtonSolverNVA DEBUG | solveGaussNewton] CRITICAL: The calculated perturbation vector contains non-finite values! The system is likely ill-conditioned." << std::endl;
         } else {
-            std::cout << "[GNSNVA DEBUG] Calculated perturbation norm: " << perturbation.norm() << std::endl;
+            std::cout << "[004# GaussNewtonSolverNVA DEBUG | solveGaussNewton] Calculated perturbation norm: " << perturbation.norm() << std::endl;
         }
+        std::cout << "\n[000# GaussNewtonSolverNVA DEBUG | solveGaussNewton]  ###################### END ####################. \n" << std::endl;
 #endif
 
         return perturbation;
