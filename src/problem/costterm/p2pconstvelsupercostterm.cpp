@@ -168,8 +168,8 @@ namespace finalicp {
                 
                 interp_mats_.emplace(time, std::make_pair(omega, lambda));
 #ifdef DEBUG
-                if (!interp_mats_.allFinite()) {
-                    std::cerr << "[P2PCVSuperCostTerm DEBUG | initialize_interp_matrices_ | iter: " << i << "] CRITICAL: Aggregated interp_mats_ is non-finite!" << std::endl;
+                if (!omega.allFinite() || !lambda.allFinite()) {
+                    std::cerr << "[P2PCVSuperCostTerm DEBUG | initialize_interp_matrices_ | ts: " << time << "] CRITICAL: Aggregated interp_mats_ is non-finite!" << std::endl;
                 } 
 #endif
             }
