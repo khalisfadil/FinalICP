@@ -201,11 +201,13 @@ namespace finalicp {
                 if (!lambda.allFinite()) {
                     std::cerr << "[009# P2PCVSuperCostTerm DEBUG | initialize_interp_matrices_ | ts: " << time << "] CRITICAL: Aggregated lambda is non-finite!" << std::endl;
                 }
-                std::cout << "\n[000# P2PCVSuperCostTerm DEBUG | initialize_interp_matrices_]  ###################### END ####################. \n" << std::endl; 
 #endif
             
             }
         }
+#ifdef DEBUG
+        std::cout << "\n[000# P2PCVSuperCostTerm DEBUG | initialize_interp_matrices_]  ###################### END ####################. \n" << std::endl; 
+#endif
     }
 
     // ##########################################
