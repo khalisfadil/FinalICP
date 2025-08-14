@@ -158,6 +158,7 @@ namespace finalicp {
 #ifdef DEBUG
                 if (tau < 1e-6) {
                 std::cerr << "[002# P2PCVSuperCostTerm DEBUG | initialize_interp_matrices_] CRITICAL: Small tau=" << tau << std::endl;
+            }
 #endif
 
                 Eigen::Matrix4d omega = Eigen::Matrix4d::Zero();
@@ -202,6 +203,7 @@ namespace finalicp {
                 }
                 std::cout << "\n[000# P2PCVSuperCostTerm DEBUG | initialize_interp_matrices_]  ###################### END ####################. \n" << std::endl; 
 #endif
+            
             }
         }
     }
